@@ -1,0 +1,22 @@
+{
+  "name": "codecollab-infra",
+  "version": "1.0.0",
+  "description": "AWS CDK infrastructure as code",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.0.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "aws-cdk": "^2.0.0"
+  }
+}

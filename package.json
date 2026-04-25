@@ -1,0 +1,24 @@
+{
+  "name": "codecollab",
+  "version": "1.0.0",
+  "description": "Real-time collaborative code editing platform",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "collab-server",
+    "execution-api",
+    "translation",
+    "infra"
+  ],
+  "scripts": {
+    "install-all": "npm install",
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

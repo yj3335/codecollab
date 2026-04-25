@@ -1,0 +1,29 @@
+# Auto normalize line endings for all text files
+* text=auto
+
+# JavaScript and TypeScript
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Docker
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary

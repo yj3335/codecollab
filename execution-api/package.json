@@ -1,0 +1,25 @@
+{
+  "name": "codecollab-execution-api",
+  "version": "1.0.0",
+  "description": "Code execution API with ECS integration",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "express": "^4.0.0",
+    "ws": "^8.0.0",
+    "aws-sdk": "^2.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/express": "^4.0.0",
+    "typescript": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
+}
