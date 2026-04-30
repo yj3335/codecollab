@@ -49,20 +49,20 @@ This will start all services in watch mode.
 
 Each person works on their assigned services but can read shared files:
 
-**Person A (Frontend)**
+**Yatharth Mogra (Frontend)**
 - `frontend/` - Read/write
 - `shared/` - Read only
 
-**Person B (Collaboration)**
+**Yash Jain (Collaboration)**
 - `collab-server/` - Read/write
 - `shared/` - Read only
 
-**Person C (Execution)**
+**Pranali Thakkar (Execution)**
 - `execution-api/` - Read/write
 - `runners/` - Read/write
 - `shared/` - Read only
 
-**Person D (Translation + Infrastructure)**
+**Binti Padaliya (Translation + Infrastructure)**
 - `translation/` - Read/write
 - `infra/` - Read/write
 - `shared/` - Read only
