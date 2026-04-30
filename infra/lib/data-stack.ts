@@ -1,8 +1,11 @@
+import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
@@ -177,6 +180,40 @@ export class DataStack extends cdk.Stack {
     new cdk.CfnOutput(this, "RedisPrimaryEndpoint", {
       value: redisCluster.attrPrimaryEndPointAddress,
       exportName: "CodeCollab-RedisPrimaryEndpoint",
+    });
+
+    // ── Translation Lambda ────────────────────────────────────────────────────
+
+    const translationFn = new lambdaNodejs.NodejsFunction(
+      this,
+      "TranslationFunction",
+      {
+        functionName: "codecollab-translation",
+        entry: path.join(__dirname, "../../translation/handler.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        bundling: {
+          minify: false,
+          sourceMap: true,
+          // aws-lambda types are compile-only; nothing to bundle at runtime
+          externalModules: [],
+        },
+        environment: {
+          NODE_OPTIONS: "--enable-source-maps",
+        },
+      }
+    );
+
+    new cdk.CfnOutput(this, "TranslationFunctionName", {
+      value: translationFn.functionName,
+      exportName: "CodeCollab-TranslationFunctionName",
+    });
+
+    new cdk.CfnOutput(this, "TranslationFunctionArn", {
+      value: translationFn.functionArn,
+      exportName: "CodeCollab-TranslationFunctionArn",
     });
   }
 }
