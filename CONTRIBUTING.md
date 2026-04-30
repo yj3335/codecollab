@@ -205,6 +205,6 @@ git push --force origin main  # Force push (only if not deployed)
 ```
 
 ### Database issues
-- Contact Person B (collab-server) for DynamoDB issues
+- Contact Yash Jain (collab-server) for DynamoDB issues
 - Contact Person C (execution-api) for cache issues
 - Contact Person D for infrastructure issues
