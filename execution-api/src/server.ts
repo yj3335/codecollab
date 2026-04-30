@@ -1,13 +1,18 @@
 import express from "express";
-import { createServer } from "node:http";
-import { WebSocketServer } from "ws";
+import { createServer, type IncomingMessage } from "node:http";
+import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { URL } from "node:url";
 
-import type { ApiResponse, RunRequest, RunResult, StreamEvent } from "../../shared/types";
-import { config } from "./config";
-import { executePythonLocally, extractImages } from "./docker-executor";
-import { getRun, saveRun } from "./run-store";
+import type {
+  ApiResponse,
+  RunRequest,
+  RunResult,
+  StreamEvent,
+} from "../../shared/types.js";
+import { config } from "./config.js";
+import { executePythonLocally, extractImages } from "./docker-executor.js";
+import { getRun, saveRun } from "./run-store.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -76,54 +81,57 @@ app.post(
 const server = createServer(app);
 const streamServer = new WebSocketServer({ noServer: true });
 
-streamServer.on("connection", (socket, request, runId: string) => {
-  const run = getRun(runId);
+streamServer.on(
+  "connection",
+  (socket: WebSocket, _request: IncomingMessage, runId: string) => {
+    const run = getRun(runId);
 
-  const emit = (event: StreamEvent) => {
-    socket.send(JSON.stringify(event));
-  };
+    const emit = (event: StreamEvent) => {
+      socket.send(JSON.stringify(event));
+    };
 
-  emit({
-    type: "start",
-    data: run ? `Streaming mock for run ${runId}` : `Run ${runId} not found`,
-    timestamp: new Date().toISOString(),
-  });
+    emit({
+      type: "start",
+      data: run ? `Streaming mock for run ${runId}` : `Run ${runId} not found`,
+      timestamp: new Date().toISOString(),
+    });
 
-  if (run) {
-    if (run.stdout) {
+    if (run) {
+      if (run.stdout) {
+        emit({
+          type: "stdout",
+          data: run.stdout,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (run.stderr) {
+        emit({
+          type: "stderr",
+          data: run.stderr,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       emit({
-        type: "stdout",
-        data: run.stdout,
+        type: "complete",
+        data: JSON.stringify({
+          exitCode: run.exitCode,
+          executionTime: run.executionTime,
+        }),
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      emit({
+        type: "error",
+        data: "This Week 1 stream endpoint is a mock. Run the code first via POST /api/run.",
         timestamp: new Date().toISOString(),
       });
     }
 
-    if (run.stderr) {
-      emit({
-        type: "stderr",
-        data: run.stderr,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    emit({
-      type: "complete",
-      data: JSON.stringify({
-        exitCode: run.exitCode,
-        executionTime: run.executionTime,
-      }),
-      timestamp: new Date().toISOString(),
-    });
-  } else {
-    emit({
-      type: "error",
-      data: "This Week 1 stream endpoint is a mock. Run the code first via POST /api/run.",
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  socket.close();
-});
+    socket.close();
+  },
+);
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "", `http://${request.headers.host}`);

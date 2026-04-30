@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-import type { RunRequest, RunResult } from "../../shared/types";
-import { config } from "./config";
+import type { RunRequest, RunResult } from "../../shared/types.js";
+import { config } from "./config.js";
 
 const IMAGE_PREFIX = "CODECOLLAB_IMAGE:";
 

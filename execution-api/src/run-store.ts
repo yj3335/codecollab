@@ -1,4 +1,4 @@
-import type { RunResult } from "../../shared/types";
+import type { RunResult } from "../../shared/types.js";
 
 const runs = new Map<string, RunResult>();
 
