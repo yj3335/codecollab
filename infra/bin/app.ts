@@ -13,7 +13,7 @@ const env: cdk.Environment = {
 
 const tags = {
   project: "codecollab",
-  owner: "person-d",
+  owner: "binti",
 };
 
 const networkStack = new NetworkStack(app, "CodeCollab-NetworkStack", {
