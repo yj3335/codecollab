@@ -257,12 +257,10 @@ export class ComputeStack extends cdk.Stack {
         deregistrationDelay: cdk.Duration.seconds(30),
       }
     );
-    executionApiTg.addTarget(
-      executionApiService.loadBalancerTarget({
-        containerName: "ExecutionApiContainer",
-        containerPort: 8001,
-      })
-    );
+    // Placeholder image does not serve on 8001 — registering causes ALB health
+    // check failures that prevent CloudFormation from stabilizing. Wire up once
+    // the real execution-api ECR image is pushed.
+    void executionApiService;
 
     // ── frontend ──────────────────────────────────────────────────────────────
 
@@ -312,12 +310,8 @@ export class ComputeStack extends cdk.Stack {
       },
       deregistrationDelay: cdk.Duration.seconds(30),
     });
-    frontendTg.addTarget(
-      frontendService.loadBalancerTarget({
-        containerName: "FrontendContainer",
-        containerPort: 3000,
-      })
-    );
+    // Placeholder image does not serve on 3000 — same reason as execution-api.
+    void frontendService;
 
     // ── translation Lambda target ─────────────────────────────────────────────
     //
