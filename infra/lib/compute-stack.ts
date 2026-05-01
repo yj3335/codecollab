@@ -154,16 +154,8 @@ export class ComputeStack extends cdk.Stack {
         S3_BUCKET_LOGS: dataStack.editHistoryBucket.bucketName,
       },
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: "collab-server" }),
-      healthCheck: {
-        command: [
-          "CMD-SHELL",
-          "curl -sf http://localhost:8000/health || exit 1",
-        ],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
+      // No container-level healthCheck — ALB health check (GET /health → 200)
+      // is sufficient and avoids requiring curl in the image.
     });
 
     const collabService = new ecs.FargateService(this, "CollabServerService", {
