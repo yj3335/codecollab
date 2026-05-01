@@ -329,6 +329,21 @@ export class ComputeStack extends cdk.Stack {
     //  2. Inject the function ARN directly via L1 escape hatch.
     //  3. Add the Lambda::Permission in ComputeStack scope only.
 
+    // Create permission first with no sourceArn restriction.
+    // Using sourceArn: tg.targetGroupArn would be circular — the TG validates
+    // the permission exists at create time, but the TG ARN only exists after
+    // the TG is created. Omitting sourceArn lets us enforce the DependsOn order
+    // without a circular reference; any ELB in this account can invoke.
+    const translationPermission = new lambda.CfnPermission(
+      this,
+      "TranslationAlbPermission",
+      {
+        functionName: dataStack.translationFn.functionArn,
+        action: "lambda:InvokeFunction",
+        principal: "elasticloadbalancing.amazonaws.com",
+      }
+    );
+
     const translationTg = new elbv2.ApplicationTargetGroup(
       this,
       "TranslationTG",
@@ -337,12 +352,8 @@ export class ComputeStack extends cdk.Stack {
     (translationTg.node.defaultChild as elbv2.CfnTargetGroup).targets = [
       { id: dataStack.translationFn.functionArn },
     ];
-    new lambda.CfnPermission(this, "TranslationAlbPermission", {
-      functionName: dataStack.translationFn.functionArn,
-      action: "lambda:InvokeFunction",
-      principal: "elasticloadbalancing.amazonaws.com",
-      sourceArn: translationTg.targetGroupArn,
-    });
+    // TG must be created after the permission or its creation-time validation fails.
+    translationTg.node.addDependency(translationPermission);
 
     // ── stub task def for translation-lambda (not deployed as ECS service) ────
 
