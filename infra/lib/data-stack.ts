@@ -34,7 +34,7 @@ export class DataStack extends cdk.Stack {
 
     this.sessionsTable = new dynamodb.Table(this, "SessionsTable", {
       tableName: "codecollab-sessions",
-      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      partitionKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expiresAt",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
