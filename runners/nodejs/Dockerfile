@@ -2,7 +2,6 @@ FROM node:20-slim
 
 WORKDIR /app
 
-RUN useradd --create-home --uid 1000 runner
-USER 1000
+USER node
 
 CMD ["node", "--version"]
