@@ -46,7 +46,7 @@ export class ComputeStack extends cdk.Stack {
 
     const albSg = new ec2.SecurityGroup(this, "AlbSecurityGroup", {
       vpc,
-      description: "Internet-facing ALB — allow HTTP inbound",
+      description: "Internet-facing ALB: allow HTTP inbound",
       allowAllOutbound: true,
     });
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), "HTTP from internet");
@@ -57,7 +57,7 @@ export class ComputeStack extends cdk.Stack {
     // allowAllOutbound lets tasks reach Redis (VPC), DynamoDB/S3 (endpoints), ECR.
     const ecsSg = new ec2.SecurityGroup(this, "EcsTaskSg", {
       vpc,
-      description: "ECS Fargate tasks — outbound unrestricted, inbound from ALB only",
+      description: "ECS Fargate tasks: outbound unrestricted, inbound from ALB only",
       allowAllOutbound: true,
     });
     ecsSg.addIngressRule(albSg, ec2.Port.tcp(8000), "collab-server from ALB");
