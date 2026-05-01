@@ -14,21 +14,16 @@ export interface DataStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
 }
 
-/**
- * DataStack provisions all persistent storage for CodeCollab: DynamoDB session
- * table, ElastiCache Redis for real-time collab state, S3 buckets for edit
- * history and execution staging, SQS dead-letter queue, and ECR repositories
- * for the Python and Node.js runner images.
- */
 export class DataStack extends cdk.Stack {
-  /** Security group on the ECS tasks — exported so ComputeStack can reuse it. */
   public readonly ecsSecurityGroup: ec2.SecurityGroup;
-
-  /** ECR repo for the Python runner image. */
   public readonly pythonRunnerRepo: ecr.Repository;
-
-  /** ECR repo for the Node.js runner image. */
   public readonly nodejsRunnerRepo: ecr.Repository;
+  public readonly sessionsTable: dynamodb.Table;
+  public readonly editHistoryBucket: s3.Bucket;
+  public readonly execStagingBucket: s3.Bucket;
+  public readonly redisEndpointAddress: string;
+  public readonly redisEndpointPort: string;
+  public readonly translationFn: lambdaNodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -37,7 +32,7 @@ export class DataStack extends cdk.Stack {
 
     // ── DynamoDB ─────────────────────────────────────────────────────────────
 
-    const sessionsTable = new dynamodb.Table(this, "SessionsTable", {
+    this.sessionsTable = new dynamodb.Table(this, "SessionsTable", {
       tableName: "codecollab-sessions",
       partitionKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -46,13 +41,13 @@ export class DataStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "SessionsTableName", {
-      value: sessionsTable.tableName,
+      value: this.sessionsTable.tableName,
       exportName: "CodeCollab-SessionsTableName",
     });
 
     // ── S3 Buckets ───────────────────────────────────────────────────────────
 
-    const editHistoryBucket = new s3.Bucket(this, "EditHistoryBucket", {
+    this.editHistoryBucket = new s3.Bucket(this, "EditHistoryBucket", {
       bucketName: `codecollab-edit-history-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
@@ -61,7 +56,7 @@ export class DataStack extends cdk.Stack {
       versioned: false,
     });
 
-    const execStagingBucket = new s3.Bucket(this, "ExecStagingBucket", {
+    this.execStagingBucket = new s3.Bucket(this, "ExecStagingBucket", {
       bucketName: `codecollab-exec-staging-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
@@ -70,12 +65,12 @@ export class DataStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "EditHistoryBucketName", {
-      value: editHistoryBucket.bucketName,
+      value: this.editHistoryBucket.bucketName,
       exportName: "CodeCollab-EditHistoryBucketName",
     });
 
     new cdk.CfnOutput(this, "ExecStagingBucketName", {
-      value: execStagingBucket.bucketName,
+      value: this.execStagingBucket.bucketName,
       exportName: "CodeCollab-ExecStagingBucketName",
     });
 
@@ -131,13 +126,15 @@ export class DataStack extends cdk.Stack {
 
     const redisSg = new ec2.SecurityGroup(this, "RedisSecurityGroup", {
       vpc,
-      description: "Allow Redis access from ECS tasks only",
+      description: "Allow Redis access from VPC private subnets",
       allowAllOutbound: false,
     });
+    // Use VPC CIDR instead of a specific SG so ECS task SGs can live in
+    // ComputeStack without creating a cross-stack dependency cycle.
     redisSg.addIngressRule(
-      this.ecsSecurityGroup,
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(6379),
-      "Redis from ECS tasks"
+      "Redis from VPC"
     );
 
     new cdk.CfnOutput(this, "EcsSecurityGroupId", {
@@ -177,6 +174,9 @@ export class DataStack extends cdk.Stack {
     );
     redisCluster.addDependency(redisSubnetGroup);
 
+    this.redisEndpointAddress = redisCluster.attrPrimaryEndPointAddress;
+    this.redisEndpointPort = redisCluster.attrPrimaryEndPointPort;
+
     new cdk.CfnOutput(this, "RedisPrimaryEndpoint", {
       value: redisCluster.attrPrimaryEndPointAddress,
       exportName: "CodeCollab-RedisPrimaryEndpoint",
@@ -184,7 +184,7 @@ export class DataStack extends cdk.Stack {
 
     // ── Translation Lambda ────────────────────────────────────────────────────
 
-    const translationFn = new lambdaNodejs.NodejsFunction(
+    this.translationFn = new lambdaNodejs.NodejsFunction(
       this,
       "TranslationFunction",
       {
@@ -197,7 +197,6 @@ export class DataStack extends cdk.Stack {
         bundling: {
           minify: false,
           sourceMap: true,
-          // aws-lambda types are compile-only; nothing to bundle at runtime
           externalModules: [],
         },
         environment: {
@@ -207,12 +206,12 @@ export class DataStack extends cdk.Stack {
     );
 
     new cdk.CfnOutput(this, "TranslationFunctionName", {
-      value: translationFn.functionName,
+      value: this.translationFn.functionName,
       exportName: "CodeCollab-TranslationFunctionName",
     });
 
     new cdk.CfnOutput(this, "TranslationFunctionArn", {
-      value: translationFn.functionArn,
+      value: this.translationFn.functionArn,
       exportName: "CodeCollab-TranslationFunctionArn",
     });
   }
