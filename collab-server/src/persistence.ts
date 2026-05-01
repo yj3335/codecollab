@@ -2,6 +2,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb"
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb"
 import { logger } from "./logger.js"
@@ -49,16 +50,18 @@ export class DynamoDBPersistence {
   async saveSessionState(sessionId: string, state: Uint8Array): Promise<void> {
     try {
       await client.send(
-        new PutItemCommand({
+        new UpdateItemCommand({
           TableName: TABLE,
-          Item: marshall(
-            {
-              id: sessionId,
-              yjsState: Buffer.from(state),
-              updatedAt: new Date().toISOString(),
-            },
-            { removeUndefinedValues: true }
-          ),
+          Key: marshall({ id: sessionId }),
+          UpdateExpression: "SET #yjs = :state, #ts = :now",
+          ExpressionAttributeNames: {
+            "#yjs": "yjsState",
+            "#ts": "updatedAt",
+          },
+          ExpressionAttributeValues: marshall({
+            ":state": Buffer.from(state),
+            ":now": new Date().toISOString(),
+          }),
         })
       )
     } catch (err) {

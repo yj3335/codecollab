@@ -1,8 +1,11 @@
 import { Router } from "express"
 import { randomUUID } from "crypto"
-import * as Y from "yjs"
+import { createRequire } from "module"
 import { DynamoDBPersistence } from "./persistence.js"
 import { logger } from "./logger.js"
+
+const require = createRequire(import.meta.url)
+const Y = require("yjs")
 
 export const sessionRouter = Router()
 const dynamo = new DynamoDBPersistence()
