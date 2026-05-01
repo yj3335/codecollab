@@ -124,7 +124,7 @@ npm run test -- --watch        # Watch mode
 1. Update types in `shared/types.ts`
 2. Update contracts in `shared/contracts.md` with new fields
 3. Create migration in `infra/`
-4. Notify Person D about deployment
+4. Notify Binti about deployment
 
 ### Data migrations
 - Keep migrations versioned
@@ -139,7 +139,7 @@ npm run test -- --watch        # Watch mode
 - Never commit real AWS credentials
 
 ### Deploying changes
-- Infrastructure changes: only Person D with `cdk deploy`
+- Infrastructure changes: only Binti with `cdk deploy`
 - Application changes: CI/CD pipeline (set up later)
 - Test deployments: use dev stage first
 
@@ -188,7 +188,7 @@ aws logs create-export-task --log-group-name /aws/ecs/codecollab-runner-dev
 - **Type issues**: Check `shared/types.ts` or add new types
 - **Stuck on something**: Open an issue or ask in chat
 - **Need another service**: Create an issue on that service repo
-- **Infrastructure**: Ask Person D
+- **Infrastructure**: Ask Binti
 
 ## Emergency Procedures
 
@@ -206,5 +206,5 @@ git push --force origin main  # Force push (only if not deployed)
 
 ### Database issues
 - Contact Yash Jain (collab-server) for DynamoDB issues
-- Contact Person C (execution-api) for cache issues
-- Contact Person D for infrastructure issues
+- Contact Pranali (execution-api) for cache issues
+- Contact Binti for infrastructure issues
