@@ -7,7 +7,7 @@ Real-time collaborative code editor with multi-language support and execution.
 This is a monorepo containing 5 services:
 
 - **frontend**: React + Monaco editor UI (Person A)
-- **collab-server**: Yjs + Redis collaboration backend (Person B)
+- **collab-server**: Yjs + Redis collaboration backend (Yash Jain)
 - **execution-api**: Code runner with ECS integration (Person C)
 - **runners**: Docker images for Python and Node.js (Person C)
 - **translation**: Gemini API Lambda for code translation (Person D)
@@ -49,20 +49,20 @@ This will start all services in watch mode.
 
 Each person works on their assigned services but can read shared files:
 
-**Person A (Frontend)**
+**Yatharth Mogra (Frontend)**
 - `frontend/` - Read/write
 - `shared/` - Read only
 
-**Person B (Collaboration)**
+**Yash Jain (Collaboration)**
 - `collab-server/` - Read/write
 - `shared/` - Read only
 
-**Person C (Execution)**
+**Pranali Thakkar (Execution)**
 - `execution-api/` - Read/write
 - `runners/` - Read/write
 - `shared/` - Read only
 
-**Person D (Translation + Infrastructure)**
+**Binti Padaliya (Translation + Infrastructure)**
 - `translation/` - Read/write
 - `infra/` - Read/write
 - `shared/` - Read only
