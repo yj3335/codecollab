@@ -38,6 +38,7 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expiresAt",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: false,
     });
 
     new cdk.CfnOutput(this, "SessionsTableName", {
