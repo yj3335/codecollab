@@ -81,25 +81,13 @@ export class ComputeStack extends cdk.Stack {
       roleName: "codecollab-python-runner-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
-    pythonRunnerTaskRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: "S3ExecStagingReadWrite",
-        actions: ["s3:GetObject", "s3:PutObject"],
-        resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
-      })
-    );
+    // No policies — runners must not call any AWS services; network is blocked at container level.
 
     const nodejsRunnerTaskRole = new iam.Role(this, "NodejsRunnerTaskRole", {
       roleName: "codecollab-nodejs-runner-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
-    nodejsRunnerTaskRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: "S3ExecStagingReadWrite",
-        actions: ["s3:GetObject", "s3:PutObject"],
-        resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
-      })
-    );
+    // No policies — same rationale as python runner.
 
     const collabTaskRole = new iam.Role(this, "CollabTaskRole", {
       roleName: "codecollab-collab-task-role",
@@ -113,7 +101,6 @@ export class ComputeStack extends cdk.Stack {
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem",
-          "dynamodb:Query",
         ],
         resources: [dataStack.sessionsTable.tableArn],
       })
@@ -133,7 +120,7 @@ export class ComputeStack extends cdk.Stack {
     executionApiTaskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "S3ExecStagingReadWrite",
-        actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        actions: ["s3:GetObject", "s3:PutObject"],
         resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
       })
     );
@@ -153,9 +140,19 @@ export class ComputeStack extends cdk.Stack {
     executionApiTaskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "EcsRunnerMonitor",
-        actions: ["ecs:DescribeTasks", "ecs:StopTask"],
+        actions: ["ecs:DescribeTasks"],
         resources: [
           `arn:aws:ecs:${this.region}:${this.account}:task/${this.cluster.clusterName}/*`,
+        ],
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "RunnerLogsRead",
+        actions: ["logs:GetLogEvents", "logs:FilterLogEvents"],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/python-runner:*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/nodejs-runner:*`,
         ],
       })
     );
