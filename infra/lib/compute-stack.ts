@@ -76,6 +76,31 @@ export class ComputeStack extends cdk.Stack {
 
     // ── Per-service task roles ────────────────────────────────────────────────
 
+    // Runner task roles defined first — executionApiTaskRole PassRole policy references them.
+    const pythonRunnerTaskRole = new iam.Role(this, "PythonRunnerTaskRole", {
+      roleName: "codecollab-python-runner-task-role",
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    pythonRunnerTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "S3ExecStagingReadWrite",
+        actions: ["s3:GetObject", "s3:PutObject"],
+        resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
+      })
+    );
+
+    const nodejsRunnerTaskRole = new iam.Role(this, "NodejsRunnerTaskRole", {
+      roleName: "codecollab-nodejs-runner-task-role",
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    nodejsRunnerTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "S3ExecStagingReadWrite",
+        actions: ["s3:GetObject", "s3:PutObject"],
+        resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
+      })
+    );
+
     const collabTaskRole = new iam.Role(this, "CollabTaskRole", {
       roleName: "codecollab-collab-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -110,6 +135,39 @@ export class ComputeStack extends cdk.Stack {
         sid: "S3ExecStagingReadWrite",
         actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
         resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "EcsRunnerLaunch",
+        actions: ["ecs:RunTask"],
+        resources: [
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/python-runner:*`,
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/nodejs-runner:*`,
+        ],
+        conditions: {
+          ArnEquals: { "ecs:cluster": this.cluster.clusterArn },
+        },
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "EcsRunnerMonitor",
+        actions: ["ecs:DescribeTasks", "ecs:StopTask"],
+        resources: [
+          `arn:aws:ecs:${this.region}:${this.account}:task/${this.cluster.clusterName}/*`,
+        ],
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "PassRunnerRoles",
+        actions: ["iam:PassRole"],
+        resources: [
+          executionRole.roleArn,
+          pythonRunnerTaskRole.roleArn,
+          nodejsRunnerTaskRole.roleArn,
+        ],
       })
     );
 
