@@ -15,12 +15,12 @@ sessionRouter.post("/", async (req, res) => {
   if (!name || !language || !ownerId) {
     return res.status(400).json({ success: false, error: "name, language, and ownerId are required" })
   }
-  const id = randomUUID()
+  const sessionId = randomUUID()
   const now = new Date().toISOString()
-  const session = { id, name, language, ownerId, isPublic, createdAt: now, updatedAt: now }
+  const session = { sessionId, name, language, ownerId, isPublic, createdAt: now, updatedAt: now }
   try {
     await dynamo.createSession(session)
-    logger.info({ sessionId: id }, "Session created")
+    logger.info({ sessionId }, "Session created")
     return res.status(201).json({ success: true, data: session })
   } catch (err) {
     logger.error({ err }, "createSession failed")
@@ -50,7 +50,7 @@ sessionRouter.post("/:id/duplicate", async (req, res) => {
 
     const newId = randomUUID()
     const now = new Date().toISOString()
-    const newSession = { id: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now }
+    const newSession = { sessionId: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now }
 
     await dynamo.createSession(newSession)
     const state = await dynamo.loadSessionState(req.params.id)

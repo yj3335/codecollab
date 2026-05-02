@@ -17,7 +17,7 @@ const client = new DynamoDBClient({
 })
 
 export interface SessionRecord {
-  id: string
+  sessionId: string
   name: string
   language: string
   ownerId: string
@@ -32,7 +32,7 @@ export class DynamoDBPersistence {
       const result = await client.send(
         new GetItemCommand({
           TableName: TABLE,
-          Key: marshall({ id: sessionId }),
+          Key: marshall({ sessionId }),
           ProjectionExpression: "#yjs",
           ExpressionAttributeNames: { "#yjs": "yjsState" },
         })
@@ -52,7 +52,7 @@ export class DynamoDBPersistence {
       await client.send(
         new UpdateItemCommand({
           TableName: TABLE,
-          Key: marshall({ id: sessionId }),
+          Key: marshall({ sessionId }),
           UpdateExpression: "SET #yjs = :state, #ts = :now",
           ExpressionAttributeNames: {
             "#yjs": "yjsState",
@@ -76,11 +76,11 @@ export class DynamoDBPersistence {
         new PutItemCommand({
           TableName: TABLE,
           Item: marshall(session, { removeUndefinedValues: true }),
-          ConditionExpression: "attribute_not_exists(id)",
+          ConditionExpression: "attribute_not_exists(sessionId)",
         })
       )
     } catch (err) {
-      logger.error({ sessionId: session.id, err }, "DynamoDB createSession failed")
+      logger.error({ sessionId: session.sessionId, err }, "DynamoDB createSession failed")
       throw err
     }
   }
@@ -90,7 +90,7 @@ export class DynamoDBPersistence {
       const result = await client.send(
         new GetItemCommand({
           TableName: TABLE,
-          Key: marshall({ id: sessionId }),
+          Key: marshall({ sessionId }),
         })
       )
       if (!result.Item) return null
