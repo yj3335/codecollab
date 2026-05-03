@@ -2,7 +2,6 @@
   "name": "codecollab-frontend",
   "version": "1.0.0",
   "description": "React frontend for code collaboration",
-  "type": "module",
   "scripts": {
     "dev": "react-scripts start",
     "build": "react-scripts build",
@@ -10,8 +9,10 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
+    "react-router-dom": "^6.30.1",
     "yjs": "^13.0.0",
     "y-websocket": "^1.5.0",
     "y-protocols": "^1.0.0",
@@ -20,8 +21,21 @@
   },
   "devDependencies": {
     "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "react-scripts": "5.0.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }
