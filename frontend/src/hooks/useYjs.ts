@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { MonacoBinding } from "y-monaco";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { colorFromString, getDisplayName, getOrCreateOwnerId } from "../lib/userIdentity";
 
 type UseYjsOptions = {
   sessionId: string;
@@ -14,6 +15,7 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
   const providerRef = useRef<WebsocketProvider | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const undoRef = useRef<Y.UndoManager | null>(null);
+  const yTextRef = useRef<Y.Text | null>(null);
 
   useEffect(() => {
     const doc = new Y.Doc();
@@ -21,6 +23,12 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
     providerRef.current = provider;
     docRef.current = doc;
     onStatusChange?.("connecting");
+
+    const ownerId = getOrCreateOwnerId();
+    provider.awareness.setLocalStateField("user", {
+      name: getDisplayName(),
+      color: colorFromString(ownerId),
+    });
 
     const statusHandler = (event: { status: "connected" | "connecting" | "disconnected" }) => {
       onStatusChange?.(event.status);
@@ -37,9 +45,24 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
       providerRef.current = null;
       docRef.current = null;
       undoRef.current = null;
+      yTextRef.current = null;
       onStatusChange?.("disconnected");
     };
   }, [onStatusChange, sessionId, wsUrl]);
+
+  const getDocumentText = useCallback(() => yTextRef.current?.toString() ?? "", []);
+
+  const replaceDocumentText = useCallback((text: string) => {
+    const yText = yTextRef.current;
+    const ydoc = yText?.doc;
+    if (!yText || !ydoc) {
+      return;
+    }
+    ydoc.transact(() => {
+      yText.delete(0, yText.length);
+      yText.insert(0, text);
+    });
+  }, []);
 
   const bindEditor = (editor: any, monaco: any) => {
     const doc = docRef.current;
@@ -50,6 +73,7 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
 
     bindingRef.current?.destroy();
     const yText = doc.getText("content");
+    yTextRef.current = yText;
     const model = editor.getModel();
     if (!model) {
       return;
@@ -74,5 +98,5 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
     });
   };
 
-  return { bindEditor };
+  return { bindEditor, getDocumentText, replaceDocumentText };
 }

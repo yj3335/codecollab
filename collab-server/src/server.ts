@@ -94,13 +94,24 @@ app.post("/api/run", (_req, res) => {
   })
 })
 
-app.post("/api/translate", (_req, res) => {
+app.post("/api/translate", (req, res) => {
+  const body = req.body as {
+    code?: string
+    sourceLanguage?: string
+    targetLanguage?: string
+    sessionId?: string
+  }
   res.json({
     success: true,
     data: {
       id: "mock-translate-id",
-      translatedCode: "print('hello')",
-      explanation: "Mock — Week 2",
+      sessionId: body.sessionId ?? "mock-session",
+      sourceLanguage: body.sourceLanguage ?? "python",
+      targetLanguage: body.targetLanguage ?? "javascript",
+      originalCode: body.code ?? "",
+      translatedCode:
+        "// Mock translation (Week 2 stub)\nconsole.log('hello');\n",
+      explanation: "Mock — replace with Lambda in production",
       timestamp: new Date().toISOString(),
     },
   })
