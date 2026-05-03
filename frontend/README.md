@@ -43,10 +43,8 @@ cp .env.example .env.local
 From the repo root you can also run:
 
 ```bash
-npm run dev --workspace=codecollab-frontend
+npm run dev --workspace=frontend
 ```
-
-(Use the workspace name from `frontend/package.json`, here `codecollab-frontend`.)
 
 ## Environment variables
 
