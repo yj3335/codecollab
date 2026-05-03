@@ -17,8 +17,7 @@ export function useSession(routeSessionId: string) {
       const nextId = await createSession();
       navigate(`/s/${nextId}`);
     } catch (error) {
-      const fallbackId = crypto.randomUUID();
-      navigate(`/s/${fallbackId}`);
+      console.error("createSession failed:", error);
     } finally {
       setIsCreatingSession(false);
     }

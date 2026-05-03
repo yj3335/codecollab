@@ -14,7 +14,7 @@ export function EditorPanel({ sessionId, onConnectionStatusChange }: EditorPanel
     "connecting"
   );
   const wsUrl = useMemo(
-    () => process.env.REACT_APP_COLLAB_WS_URL ?? "ws://localhost:1234",
+    () => process.env.REACT_APP_COLLAB_WS_URL ?? "ws://localhost:8000",
     []
   );
   const { bindEditor } = useYjs({
