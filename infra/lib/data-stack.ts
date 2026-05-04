@@ -4,6 +4,8 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -214,6 +216,40 @@ export class DataStack extends cdk.Stack {
     new cdk.CfnOutput(this, "TranslationFunctionArn", {
       value: this.translationFn.functionArn,
       exportName: "CodeCollab-TranslationFunctionArn",
+    });
+
+    // ── Yjs Compaction Lambda ─────────────────────────────────────────────────
+    // Merges incremental Yjs updates from S3 into DynamoDB, then deletes processed objects.
+    // Person B pre-bundles to collab-server/dist/compaction.js exporting `handler`.
+
+    const compactionFn = new lambda.Function(this, "CompactionFunction", {
+      functionName: "codecollab-yjs-compaction",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "compaction.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../../collab-server/dist")
+      ),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      environment: {
+        EDIT_HISTORY_BUCKET: this.editHistoryBucket.bucketName,
+        SESSIONS_TABLE_NAME: this.sessionsTable.tableName,
+      },
+    });
+
+    this.editHistoryBucket.grantReadWrite(compactionFn);
+    this.editHistoryBucket.grantDelete(compactionFn);
+    this.sessionsTable.grantReadWriteData(compactionFn);
+
+    const compactionSchedule = new events.Rule(this, "CompactionSchedule", {
+      ruleName: "CompactionSchedule",
+      schedule: events.Schedule.cron({ minute: "0", hour: "4" }),
+    });
+    compactionSchedule.addTarget(new targets.LambdaFunction(compactionFn));
+
+    new cdk.CfnOutput(this, "CompactionFunctionName", {
+      value: compactionFn.functionName,
+      exportName: "CodeCollab-CompactionFunctionName",
     });
   }
 }
