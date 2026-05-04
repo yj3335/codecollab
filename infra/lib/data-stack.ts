@@ -220,22 +220,27 @@ export class DataStack extends cdk.Stack {
 
     // ── Yjs Compaction Lambda ─────────────────────────────────────────────────
     // Merges incremental Yjs updates from S3 into DynamoDB, then deletes processed objects.
-    // Person B pre-bundles to collab-server/dist/compaction.js exporting `handler`.
 
-    const compactionFn = new lambda.Function(this, "CompactionFunction", {
-      functionName: "codecollab-yjs-compaction",
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "compaction.handler",
-      code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../collab-server/dist")
-      ),
-      timeout: cdk.Duration.minutes(5),
-      memorySize: 512,
-      environment: {
-        EDIT_HISTORY_BUCKET: this.editHistoryBucket.bucketName,
-        SESSIONS_TABLE_NAME: this.sessionsTable.tableName,
-      },
-    });
+    const compactionFn = new lambdaNodejs.NodejsFunction(
+      this,
+      "CompactionFunction",
+      {
+        functionName: "codecollab-yjs-compaction",
+        entry: path.join(__dirname, "../../collab-server/src/compaction.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 512,
+        bundling: {
+          sourceMap: true,
+          externalModules: [],
+        },
+        environment: {
+          S3_BUCKET_LOGS: this.editHistoryBucket.bucketName,
+          DYNAMODB_TABLE_SESSIONS: this.sessionsTable.tableName,
+        },
+      }
+    );
 
     this.editHistoryBucket.grantReadWrite(compactionFn);
     this.editHistoryBucket.grantDelete(compactionFn);
