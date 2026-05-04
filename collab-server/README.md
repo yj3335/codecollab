@@ -16,26 +16,25 @@ Browser (y-websocket client)
 │  │   ├── GET  /health                        │
 │  │   ├── POST /api/sessions                  │
 │  │   ├── GET  /api/sessions/:id              │
-│  │   ├── POST /api/sessions/:id/duplicate    │
-│  │   ├── POST /api/run          (mock)       │
-│  │   └── POST /api/translate    (mock)       │
+│  │   └── POST /api/sessions/:id/duplicate    │
 │  │                                           │
 │  └── WebSocketServer                         │
 │      └── y-websocket setupWSConnection       │
 │          ├── bindState  → DynamoDB load       │
 │          ├── on update  → S3 append + Redis   │
+│          ├── awareness  → Redis relay         │
 │          └── writeState → DynamoDB flush      │
 └──────────┬──────────────┬────────────────────┘
            │              │
-     ┌─────▼─────┐  ┌────▼─────┐
-     │  DynamoDB  │  │  Redis   │
-     │  Sessions  │  │  Pub/Sub │
-     │  table     │  │  + TTL   │
-     └───────────┘  └──────────┘
-           │
+     ┌─────▼─────┐  ┌────▼──────────┐
+     │  DynamoDB  │  │    Redis      │
+     │  Sessions  │  │  yjs:{id}    │
+     │  table     │  │  awareness:{id}│
+     └───────────┘  │  presence:{id} │
+           │         └───────────────┘
      ┌─────▼─────┐
      │    S3     │
-     │ Edit logs │
+     │ Edit logs │◄── compaction.ts (nightly Lambda)
      └───────────┘
 ```
 
@@ -46,25 +45,53 @@ Browser (y-websocket client)
 3. `bindState` loads the last compacted state from DynamoDB and applies it to the doc
 4. Every edit from any client is relayed to all other connected clients by y-websocket
 5. Each edit is also appended to S3 (edit history) and published to Redis (cross-server sync)
-6. When the last client disconnects, `writeState` flushes the compacted state back to DynamoDB
-7. Redis subscriptions are cleaned up on room close
+6. Awareness updates (cursor positions, user colours) are relayed via a separate Redis channel `awareness:{sessionId}`
+7. When the last client disconnects, `writeState` flushes the compacted state back to DynamoDB
+8. Redis subscriptions (doc updates + awareness) are cleaned up on room close
 
 ### Horizontal scaling
 
-Multiple Fargate tasks can run this server behind an ALB. Redis Pub/Sub ensures edits on one server reach clients on another. No sticky sessions required.
+Multiple Fargate tasks run behind an ALB. Redis Pub/Sub ensures both document edits and awareness updates (cursors) on one server reach clients on another. No sticky sessions required.
+
+### Nightly compaction
+
+Every edit appends an incremental Yjs update to S3. A nightly Lambda (`compaction.ts`) merges all incremental updates per session into the current DynamoDB state and deletes the processed S3 objects. This keeps DynamoDB current and prevents unbounded S3 growth.
 
 ## Source files
 
 | File | Responsibility |
 |---|---|
-| `server.ts` | Express + WebSocket server, y-websocket `setPersistence` hook, presence heartbeat |
+| `server.ts` | Express + WebSocket server, y-websocket `setPersistence` hook, cross-server awareness relay, presence heartbeat |
 | `persistence.ts` | DynamoDB operations: load/save Yjs state (`UpdateItem`), create/get session metadata |
 | `sessions.ts` | Express router: session create, read, duplicate |
 | `editlog.ts` | S3 append-only edit log (incremental Yjs updates keyed by sessionId) |
-| `redis.ts` | Redis Pub/Sub adapter for cross-server sync + presence TTL keys |
+| `redis.ts` | Redis Pub/Sub: doc update relay, awareness relay, presence TTL keys |
+| `compaction.ts` | Nightly Lambda: merge S3 incremental updates → DynamoDB, delete processed objects |
 | `logger.ts` | Pino logger (pretty in dev, structured JSON in production) |
 
 ## API
+
+| Channel | Purpose |
+|---|---|
+| `yjs:{sessionId}` | Incremental Yjs document updates — relayed across Fargate tasks |
+| `awareness:{sessionId}` | y-websocket awareness updates (cursor positions, user colours) — relayed across Fargate tasks |
+| `presence:{sessionId}` | TTL key (10s) — indicates whether a room has active clients |
+
+## Compaction Lambda
+
+`compaction.ts` exports a `handler` function for use as an AWS Lambda. It should be triggered nightly via EventBridge.
+
+**What it does:**
+1. Lists all session prefixes in the S3 edit history bucket
+2. For each session: loads current DynamoDB state, downloads and applies all S3 incremental updates, writes the new compacted state back to DynamoDB, deletes the processed S3 objects
+
+**Required IAM permissions:**
+- `s3:ListBucket`, `s3:GetObject`, `s3:DeleteObject` on the edit history bucket
+- `dynamodb:GetItem`, `dynamodb:UpdateItem` on the sessions table
+
+**Returns:** `{ statusCode: 200|207, body: { sessionsProcessed, totalUpdatesApplied, totalObjectsDeleted, errors } }`
+
+
 
 All responses follow the shape `{ success: boolean, data?: T, error?: string }`.
 
