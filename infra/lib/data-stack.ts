@@ -234,8 +234,25 @@ export class DataStack extends cdk.Stack {
         bundling: {
           sourceMap: true,
           externalModules: [],
+          // Lambda CJS bundles have no import.meta.url; provide the known
+          // runtime path so createRequire(import.meta.url) in compaction.ts works.
+          define: { "import.meta.url": '"file:///var/task/index.js"' },
+          commandHooks: {
+            beforeBundling: () => [],
+            beforeInstall: () => [],
+            // yjs is loaded via createRequire (a shadowed local variable), so
+            // esbuild's static analysis leaves it as a dynamic require call
+            // rather than inlining it. Copy yjs + its sole dep (lib0) next to
+            // the bundle so the runtime require can find them.
+            afterBundling: (_inputDir, outputDir) => [
+              `mkdir -p "${outputDir}/node_modules"`,
+              `cp -r "${path.join(__dirname, "../../node_modules/yjs")}" "${outputDir}/node_modules/"`,
+              `cp -r "${path.join(__dirname, "../../node_modules/lib0")}" "${outputDir}/node_modules/"`,
+            ],
+          },
         },
         environment: {
+          NODE_ENV: "production",
           S3_BUCKET_LOGS: this.editHistoryBucket.bucketName,
           DYNAMODB_TABLE_SESSIONS: this.sessionsTable.tableName,
         },
