@@ -40,23 +40,6 @@ export class RedisAdapter {
     await this.sub.unsubscribe(`yjs:${sessionId}`)
   }
 
-  async publishAwareness(sessionId: string, update: Uint8Array): Promise<void> {
-    await this.pub.publish(`awareness:${sessionId}`, Buffer.from(update).toString("base64"))
-  }
-
-  async subscribeToAwareness(
-    sessionId: string,
-    onUpdate: (update: Uint8Array) => void
-  ): Promise<void> {
-    await this.sub.subscribe(`awareness:${sessionId}`, (message) => {
-      onUpdate(new Uint8Array(Buffer.from(message, "base64")))
-    })
-  }
-
-  async unsubscribeFromAwareness(sessionId: string): Promise<void> {
-    await this.sub.unsubscribe(`awareness:${sessionId}`)
-  }
-
   async refreshPresence(sessionId: string, ttlSeconds: number): Promise<void> {
     await this.pub.set(`presence:${sessionId}`, "1", { EX: ttlSeconds })
   }

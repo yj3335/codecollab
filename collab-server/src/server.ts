@@ -11,11 +11,7 @@ import { logger } from "./logger.js"
 
 const require = createRequire(import.meta.url)
 const Y = require("yjs")
-const awarenessProtocol = require("y-protocols/dist/awareness.cjs")
-const encoding = require("lib0/dist/encoding.cjs")
-const { setupWSConnection, setPersistence, docs } = require("y-websocket/bin/utils")
-
-const MESSAGE_AWARENESS = 1
+const { setupWSConnection, setPersistence } = require("y-websocket/bin/utils")
 
 // --- Services ---
 const dynamo = new DynamoDBPersistence()
@@ -52,20 +48,6 @@ setPersistence({
     await redis.subscribeToUpdates(docName, (remoteUpdate: Uint8Array) => {
       Y.applyUpdate(ydoc, remoteUpdate, "redis")
     })
-
-    // Cross-server awareness relay via Redis
-    const awarenessHandler = ({ added, updated, removed }: any, origin: any) => {
-      if (origin === "redis") return
-      const changedClients = added.concat(updated, removed)
-      if (changedClients.length === 0) return
-      const update = awarenessProtocol.encodeAwarenessUpdate(ydoc.awareness, changedClients)
-      redis.publishAwareness(docName, update).catch(() => {})
-    }
-    ydoc.awareness.on("update", awarenessHandler)
-
-    await redis.subscribeToAwareness(docName, (remoteUpdate: Uint8Array) => {
-      awarenessProtocol.applyAwarenessUpdate(ydoc.awareness, remoteUpdate, "redis")
-    })
   },
 
   writeState: async (docName: string, ydoc: any) => {
@@ -74,7 +56,6 @@ setPersistence({
       const state = Y.encodeStateAsUpdate(ydoc)
       await dynamo.saveSessionState(docName, state)
       await redis.unsubscribeFromUpdates(docName)
-      await redis.unsubscribeFromAwareness(docName)
       logger.info({ sessionId: docName }, "Flushed to DynamoDB")
     } catch (err) {
       logger.error({ sessionId: docName, err }, "Flush to DynamoDB failed")
