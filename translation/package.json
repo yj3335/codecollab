@@ -7,7 +7,9 @@
     "build": "tsc",
     "test": "node --test dist/**/*.test.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.0.0"
+  },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",
     "@types/node": "^20.0.0",
