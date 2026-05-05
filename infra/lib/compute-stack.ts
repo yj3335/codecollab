@@ -189,6 +189,17 @@ export class ComputeStack extends cdk.Stack {
       })
     );
 
+    /** Auto-scaling for collab-server: 2–6 tasks, CPU target tracking at 60 %. */
+    const collabScaling = collabService.autoScaleTaskCount({
+      minCapacity: 2,
+      maxCapacity: 6,
+    });
+    collabScaling.scaleOnCpuUtilization("CollabCpuScaling", {
+      targetUtilizationPercent: 60,
+      scaleInCooldown: cdk.Duration.seconds(300),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
     // ── execution-api ─────────────────────────────────────────────────────────
 
     const executionApiTaskDef = new ecs.FargateTaskDefinition(
@@ -252,7 +263,19 @@ export class ComputeStack extends cdk.Stack {
     // Placeholder image does not serve on 8001 — registering causes ALB health
     // check failures that prevent CloudFormation from stabilizing. Wire up once
     // the real execution-api ECR image is pushed.
-    void executionApiService;
+    // TODO(Person C): ensure the execution-api container exposes GET /health → 200
+    // on port 8001 when the real ECR image is pushed; ALB health check path is already set.
+
+    /** Auto-scaling for execution-api: 1–4 tasks, CPU target tracking at 60 %. */
+    const executionApiScaling = executionApiService.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 4,
+    });
+    executionApiScaling.scaleOnCpuUtilization("ExecutionApiCpuScaling", {
+      targetUtilizationPercent: 60,
+      scaleInCooldown: cdk.Duration.seconds(300),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
 
     // ── frontend ──────────────────────────────────────────────────────────────
 
@@ -303,7 +326,19 @@ export class ComputeStack extends cdk.Stack {
       deregistrationDelay: cdk.Duration.seconds(30),
     });
     // Placeholder image does not serve on 3000 — same reason as execution-api.
-    void frontendService;
+    // TODO(Person B): ensure the frontend container exposes GET / → 200 on port 3000
+    // when the real ECR image is pushed; ALB health check path is already set.
+
+    /** Auto-scaling for frontend: 1–2 tasks, CPU target tracking at 70 %. */
+    const frontendScaling = frontendService.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 2,
+    });
+    frontendScaling.scaleOnCpuUtilization("FrontendCpuScaling", {
+      targetUtilizationPercent: 70,
+      scaleInCooldown: cdk.Duration.seconds(300),
+      scaleOutCooldown: cdk.Duration.seconds(120),
+    });
 
     // ── translation Lambda target ─────────────────────────────────────────────
     //
