@@ -287,9 +287,17 @@ export class ComputeStack extends cdk.Stack {
         PORT: "8001",
         NODE_ENV: "production",
         AWS_REGION: this.region,
+        // Names read by current stub (config.ts)
         ECS_CLUSTER: this.cluster.clusterName,
         PYTHON_RUNNER_IMAGE: dataStack.pythonRunnerRepo.repositoryUri,
         S3_EXEC_STAGING_BUCKET: dataStack.execStagingBucket.bucketName,
+        // Names needed when execution-api moves to ECS-based runner (Week 2)
+        ECS_CLUSTER_ARN: this.cluster.clusterArn,
+        RUNNER_TASK_DEF_ARN: `arn:aws:ecs:${this.region}:${this.account}:task-definition/python-runner`,
+        RUNNER_NODEJS_TASK_DEF_ARN: `arn:aws:ecs:${this.region}:${this.account}:task-definition/nodejs-runner`,
+        CLOUDWATCH_LOG_GROUP: "/ecs/python-runner",
+        RUNNER_SUBNETS: vpc.privateSubnets.map((s) => s.subnetId).join(","),
+        RUNNER_SECURITY_GROUP: dataStack.ecsSecurityGroup.securityGroupId,
       },
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: "execution-api" }),
     });

@@ -6,6 +6,7 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -195,7 +196,7 @@ export class DataStack extends cdk.Stack {
         entry: path.join(__dirname, "../../translation/handler.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(10),
+        timeout: cdk.Duration.seconds(60),
         memorySize: 256,
         bundling: {
           minify: false,
@@ -204,8 +205,19 @@ export class DataStack extends cdk.Stack {
         },
         environment: {
           NODE_OPTIONS: "--enable-source-maps",
+          GEMINI_SECRET_NAME: "codecollab/gemini-api-key",
         },
       }
+    );
+
+    this.translationFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "GeminiSecretRead",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:codecollab/gemini-api-key*`,
+        ],
+      })
     );
 
     new cdk.CfnOutput(this, "TranslationFunctionName", {

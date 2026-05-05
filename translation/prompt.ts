@@ -1,26 +1,42 @@
-/**
- * TODO Week 2 — Gemini system prompt requirements:
- *
- * The prompt must instruct Gemini to:
- *  1. Produce idiomatic target-language code, not a line-by-line literal
- *     translation. E.g. Python list comprehensions → JS Array.map(), not a for-loop.
- *  2. Preserve all variable and function names exactly as they appear in the
- *     source, unless a name is a reserved keyword in the target language
- *     (in which case suffix with an underscore, e.g. `class` → `class_`).
- *  3. Populate the `notes` response field with a human-readable explanation of
- *     any semantic gaps between the source and target languages — e.g. Python
- *     generators have no direct JS equivalent; note that async generators were
- *     used instead.
- *  4. Wrap the translated code in a markdown fence tagged with the target
- *     language for easy extraction by the response parser.
- *  5. If the source snippet references standard-library functions that do not
- *     exist in the target language, substitute the closest equivalent and note
- *     it in the `notes` field.
- */
-export function buildSystemPrompt(
-  sourceLang: string,
-  targetLang: string
-): string {
-  // TODO Week 2: replace with real Gemini prompt template
-  return `TODO: build prompt for ${sourceLang} → ${targetLang} translation`;
+export function buildSystemPrompt(sourceLang: string, targetLang: string): string {
+  const hints = conversionHints(sourceLang, targetLang);
+  return [
+    `You are a code translation assistant. Translate the provided ${sourceLang} code to idiomatic ${targetLang}.`,
+    ``,
+    `Rules:`,
+    `- Produce idiomatic ${targetLang} — not a line-by-line literal translation`,
+    `- Preserve all variable names and overall program structure exactly as they appear in the source`,
+    ...hints,
+    `- The "notes" field must explain any semantic gaps between ${sourceLang} and ${targetLang}, for example:`,
+    `  * pandas DataFrames → plain arrays with map/filter`,
+    `  * Python's requests library → fetch API`,
+    `  * matplotlib → console.log output or canvas-based alternatives`,
+    `  * Python generators → async generators or arrays depending on context`,
+    `- If the code cannot be meaningfully translated, set translatedCode to an empty string and explain why in notes`,
+    `- Never execute the code, only translate it`,
+    ``,
+    `Return ONLY valid JSON — no markdown fences, no preamble, no text outside the JSON object:`,
+    `{ "translatedCode": "...", "notes": "..." }`,
+  ].join("\n");
+}
+
+function conversionHints(sourceLang: string, targetLang: string): string[] {
+  const src = sourceLang.toLowerCase();
+  const tgt = targetLang.toLowerCase();
+  if (src === "python" && (tgt === "javascript" || tgt === "js")) {
+    return [
+      "- Use camelCase for variable and function names",
+      "- Use const/let instead of bare assignment",
+      "- Prefer arrow functions",
+      "- Replace list comprehensions with Array.map(), Array.filter(), or Array.reduce()",
+    ];
+  }
+  if ((src === "javascript" || src === "js") && tgt === "python") {
+    return [
+      "- Use snake_case for variable and function names",
+      "- Replace Array.map/filter chains with list comprehensions where idiomatic",
+      "- Use f-strings for string interpolation",
+    ];
+  }
+  return [];
 }
