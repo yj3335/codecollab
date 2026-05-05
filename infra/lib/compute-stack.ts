@@ -76,8 +76,21 @@ export class ComputeStack extends cdk.Stack {
 
     // ── Per-service task roles ────────────────────────────────────────────────
 
+    // Runner task roles defined first — executionApiTaskRole PassRole policy references them.
+    const pythonRunnerTaskRole = new iam.Role(this, "PythonRunnerTaskRole", {
+      roleName: "python-runner-task-role",
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    // No policies — runners must not call any AWS services; network is blocked at container level.
+
+    const nodejsRunnerTaskRole = new iam.Role(this, "NodejsRunnerTaskRole", {
+      roleName: "nodejs-runner-task-role",
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    // No policies — same rationale as python runner.
+
     const collabTaskRole = new iam.Role(this, "CollabTaskRole", {
-      roleName: "codecollab-collab-task-role",
+      roleName: "collab-server-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
     collabTaskRole.addToPolicy(
@@ -95,26 +108,79 @@ export class ComputeStack extends cdk.Stack {
     );
     collabTaskRole.addToPolicy(
       new iam.PolicyStatement({
-        sid: "S3EditHistoryWrite",
+        sid: "S3EditHistoryObjects",
         actions: ["s3:PutObject", "s3:GetObject"],
         resources: [`${dataStack.editHistoryBucket.bucketArn}/*`],
       })
     );
+    collabTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "S3EditHistoryList",
+        actions: ["s3:ListBucket"],
+        resources: [dataStack.editHistoryBucket.bucketArn],
+      })
+    );
 
     const executionApiTaskRole = new iam.Role(this, "ExecutionApiTaskRole", {
-      roleName: "codecollab-execution-api-task-role",
+      roleName: "execution-api-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
     executionApiTaskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "S3ExecStagingReadWrite",
-        actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        actions: ["s3:GetObject", "s3:PutObject"],
         resources: [`${dataStack.execStagingBucket.bucketArn}/*`],
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "EcsRunnerLaunch",
+        actions: ["ecs:RunTask"],
+        resources: [
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/python-runner:*`,
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/nodejs-runner:*`,
+        ],
+        conditions: {
+          ArnEquals: { "ecs:cluster": this.cluster.clusterArn },
+        },
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "EcsRunnerMonitor",
+        actions: ["ecs:DescribeTasks"],
+        resources: [
+          `arn:aws:ecs:${this.region}:${this.account}:task/${this.cluster.clusterName}/*`,
+        ],
+        conditions: {
+          ArnEquals: { "ecs:cluster": this.cluster.clusterArn },
+        },
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "RunnerLogsRead",
+        actions: ["logs:GetLogEvents", "logs:FilterLogEvents"],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/python-runner:*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/nodejs-runner:*`,
+        ],
+      })
+    );
+    executionApiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "PassRunnerRoles",
+        actions: ["iam:PassRole"],
+        resources: [
+          executionRole.roleArn,
+          pythonRunnerTaskRole.roleArn,
+          nodejsRunnerTaskRole.roleArn,
+        ],
       })
     );
 
     const frontendTaskRole = new iam.Role(this, "FrontendTaskRole", {
-      roleName: "codecollab-frontend-task-role",
+      roleName: "frontend-task-role",
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
 
