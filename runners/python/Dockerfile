@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends gosu iptables tini \
   && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir matplotlib numpy pandas
+RUN pip install --no-cache-dir boto3 matplotlib numpy pandas
 
 RUN useradd --create-home --uid 1000 runner
 
