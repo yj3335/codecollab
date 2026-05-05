@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 
 import type { RunRequest, RunResult } from "../../shared/types.js";
 import { config } from "./config.js";
+import type { ExecutionEventSink } from "./ecs-executor.js";
 
 const IMAGE_PREFIX = "CODECOLLAB_IMAGE:";
 
@@ -17,6 +18,7 @@ const toErrorOutput = (message: string): Pick<RunResult, "stdout" | "stderr" | "
 export const executePythonLocally = async (
   runId: string,
   request: RunRequest,
+  sink: ExecutionEventSink,
 ): Promise<RunResult> => {
   const startedAt = Date.now();
   const workspaceDir = await mkdtemp(join(tmpdir(), "codecollab-run-"));
@@ -41,9 +43,9 @@ export const executePythonLocally = async (
       "--pids-limit",
       "64",
       "-e",
-      `RUN_FILE=/workspace/main.py`,
+      "RUN_FILE=/workspace/main.py",
       "-e",
-      `STDIN_FILE=/workspace/stdin.txt`,
+      "STDIN_FILE=/workspace/stdin.txt",
       "-e",
       `RUN_TIMEOUT_SECONDS=${timeoutSeconds}`,
       "-v",
@@ -56,12 +58,30 @@ export const executePythonLocally = async (
     let stdout = "";
     let stderr = "";
 
+    sink.emit({
+      type: "start",
+      data: `Launching local Docker runner for run ${runId}`,
+      timestamp: new Date().toISOString(),
+    });
+
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+      const message = chunk.toString();
+      stdout += message;
+      sink.emit({
+        type: "stdout",
+        data: message,
+        timestamp: new Date().toISOString(),
+      });
     });
 
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      const message = chunk.toString();
+      stderr += message;
+      sink.emit({
+        type: "stderr",
+        data: message,
+        timestamp: new Date().toISOString(),
+      });
     });
 
     const exitCode = await new Promise<number>((resolve, reject) => {
@@ -70,6 +90,12 @@ export const executePythonLocally = async (
     });
 
     const executionTime = Date.now() - startedAt;
+
+    sink.emit({
+      type: "complete",
+      data: JSON.stringify({ exitCode, executionTime }),
+      timestamp: new Date().toISOString(),
+    });
 
     return {
       id: runId,
@@ -86,6 +112,12 @@ export const executePythonLocally = async (
     const executionTime = Date.now() - startedAt;
     const message =
       error instanceof Error ? error.message : "Unknown execution error";
+
+    sink.emit({
+      type: "error",
+      data: `Local Docker stub failed: ${message}`,
+      timestamp: new Date().toISOString(),
+    });
 
     return {
       id: runId,

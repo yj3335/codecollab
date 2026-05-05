@@ -1,0 +1,33 @@
+{
+  "family": "python-runner",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::212208751162:role/codecollab-ecs-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::212208751162:role/codecollab-execution-api-task-role",
+  "containerDefinitions": [
+    {
+      "name": "python-runner",
+      "image": "212208751162.dkr.ecr.us-east-1.amazonaws.com/codecollab/python-runner:latest",
+      "essential": true,
+      "readonlyRootFilesystem": true,
+      "memory": 256,
+      "user": "1000",
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/python-runner",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "python-runner"
+        }
+      },
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        }
+      ]
+    }
+  ]
+}
