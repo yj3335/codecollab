@@ -39,6 +39,24 @@ sessionRouter.get("/:id", async (req, res) => {
   }
 })
 
+sessionRouter.patch("/:id", async (req, res) => {
+  const { language } = req.body as { language?: string }
+  if (!language || typeof language !== "string") {
+    return res.status(400).json({ success: false, error: "language is required" })
+  }
+  try {
+    const existing = await dynamo.getSession(req.params.id)
+    if (!existing) return res.status(404).json({ success: false, error: "Not found" })
+    await dynamo.updateSessionLanguage(req.params.id, language)
+    const session = await dynamo.getSession(req.params.id)
+    logger.info({ sessionId: req.params.id, language }, "Session language updated")
+    return res.json({ success: true, data: session })
+  } catch (err) {
+    logger.error({ err }, "patchSession failed")
+    return res.status(500).json({ success: false, error: "Failed to update session" })
+  }
+})
+
 sessionRouter.post("/:id/duplicate", async (req, res) => {
   const { newName, ownerId } = req.body
   if (!newName || !ownerId) {

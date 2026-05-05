@@ -102,4 +102,28 @@ export class DynamoDBPersistence {
       throw err
     }
   }
+
+  async updateSessionLanguage(sessionId: string, language: string): Promise<void> {
+    const now = new Date().toISOString()
+    try {
+      await client.send(
+        new UpdateItemCommand({
+          TableName: TABLE,
+          Key: marshall({ sessionId }),
+          UpdateExpression: "SET #lang = :lang, #ts = :now",
+          ExpressionAttributeNames: {
+            "#lang": "language",
+            "#ts": "updatedAt",
+          },
+          ExpressionAttributeValues: marshall({
+            ":lang": language,
+            ":now": now,
+          }),
+        })
+      )
+    } catch (err) {
+      logger.error({ sessionId, err }, "DynamoDB updateSessionLanguage failed")
+      throw err
+    }
+  }
 }

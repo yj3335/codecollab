@@ -7,15 +7,23 @@ This document defines the contracts between all services. Update here first befo
 ### Create Session
 ```
 POST /api/sessions
-Body: { name: string, language: string, isPublic: boolean }
-Response: { id, name, language, createdAt, updatedAt, ownerId, code, yDocState }
+Body: { name: string, language: string, ownerId: string, isPublic?: boolean }
+Response envelope: { success: true, data: { sessionId, name, language, ownerId, isPublic, createdAt, updatedAt } }
 Status: 201
 ```
 
 ### Get Session
 ```
 GET /api/sessions/:id
-Response: { id, name, language, createdAt, updatedAt, ownerId, code, yDocState }
+Response envelope: { success: true, data: { sessionId, name, language, ownerId, isPublic, createdAt, updatedAt } }
+Status: 200
+```
+
+### Update Session (e.g. language after translation accept)
+```
+PATCH /api/sessions/:id
+Body: { language: string }
+Response envelope: { success: true, data: { sessionId, name, language, ... } }
 Status: 200
 ```
 
