@@ -24,6 +24,7 @@ export interface SessionRecord {
   isPublic: boolean
   createdAt: string
   updatedAt: string
+  expiresAt?: number // Unix epoch seconds — DynamoDB TTL
 }
 
 export class DynamoDBPersistence {
@@ -48,19 +49,22 @@ export class DynamoDBPersistence {
   }
 
   async saveSessionState(sessionId: string, state: Uint8Array): Promise<void> {
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
     try {
       await client.send(
         new UpdateItemCommand({
           TableName: TABLE,
           Key: marshall({ sessionId }),
-          UpdateExpression: "SET #yjs = :state, #ts = :now",
+          UpdateExpression: "SET #yjs = :state, #ts = :now, #ttl = :exp",
           ExpressionAttributeNames: {
             "#yjs": "yjsState",
             "#ts": "updatedAt",
+            "#ttl": "expiresAt",
           },
           ExpressionAttributeValues: marshall({
             ":state": Buffer.from(state),
             ":now": new Date().toISOString(),
+            ":exp": expiresAt,
           }),
         })
       )

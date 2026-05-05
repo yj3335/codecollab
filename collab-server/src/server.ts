@@ -98,44 +98,6 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/sessions", sessionRouter)
 
-// Mock endpoints for Person C and D (replaced in Week 2)
-app.post("/api/run", (_req, res) => {
-  res.json({
-    success: true,
-    data: {
-      id: "mock-run-id",
-      stdout: "Hello, World!\n",
-      stderr: "",
-      exitCode: 0,
-      executionTime: 42,
-      timestamp: new Date().toISOString(),
-    },
-  })
-})
-
-app.post("/api/translate", (req, res) => {
-  const body = req.body as {
-    code?: string
-    sourceLanguage?: string
-    targetLanguage?: string
-    sessionId?: string
-  }
-  res.json({
-    success: true,
-    data: {
-      id: "mock-translate-id",
-      sessionId: body.sessionId ?? "mock-session",
-      sourceLanguage: body.sourceLanguage ?? "python",
-      targetLanguage: body.targetLanguage ?? "javascript",
-      originalCode: body.code ?? "",
-      translatedCode:
-        "// Mock translation (Week 2 stub)\nconsole.log('hello');\n",
-      explanation: "Mock — replace with Lambda in production",
-      timestamp: new Date().toISOString(),
-    },
-  })
-})
-
 // --- WebSocket server ---
 const server = createServer(app)
 const wss = new WebSocketServer({ server })
