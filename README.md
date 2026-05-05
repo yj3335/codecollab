@@ -153,6 +153,28 @@ npm run diff           # See what will change
 npm run deploy         # Deploy to AWS
 ```
 
+## Infrastructure
+
+Three CDK stacks are deployed to AWS (`us-east-1`, account `212208751162`):
+
+| Stack | What it owns |
+|---|---|
+| `CodeCollab-NetworkStack` | VPC, public + private subnets |
+| `CodeCollab-DataStack` | DynamoDB (sessions), ElastiCache Redis, S3 buckets (edit history, exec staging), ECR repos, translation Lambda, Yjs compaction Lambda |
+| `CodeCollab-ComputeStack` | ECS Fargate cluster, ALB, Fargate services, auto-scaling |
+
+### ECS services & auto-scaling
+
+All services run on Fargate in private subnets behind the ALB (`codecollab-alb-*.us-east-1.elb.amazonaws.com`).
+
+| Service | Port | ALB path(s) | Health check | Min tasks | Max tasks | CPU scale-out |
+|---|---|---|---|---|---|---|
+| collab-server | 8000 | `/ws/*`, `/api/sessions/*` | `GET /health → 200` | 2 | 6 | 60 % |
+| execution-api | 8001 | `/api/run/*` | `GET /health → 200` | 1 | 4 | 60 % |
+| frontend | 3000 | `/` (default) | `GET / → 200` | 1 | 2 | 70 % |
+
+Scale-out cooldown: 60 s (frontend: 120 s). Scale-in cooldown: 300 s for all services.
+
 ## Troubleshooting
 
 **Port conflicts?**
