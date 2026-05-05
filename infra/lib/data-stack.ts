@@ -4,6 +4,8 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -214,6 +216,62 @@ export class DataStack extends cdk.Stack {
     new cdk.CfnOutput(this, "TranslationFunctionArn", {
       value: this.translationFn.functionArn,
       exportName: "CodeCollab-TranslationFunctionArn",
+    });
+
+    // ── Yjs Compaction Lambda ─────────────────────────────────────────────────
+    // Merges incremental Yjs updates from S3 into DynamoDB, then deletes processed objects.
+
+    const compactionFn = new lambdaNodejs.NodejsFunction(
+      this,
+      "CompactionFunction",
+      {
+        functionName: "codecollab-yjs-compaction",
+        entry: path.join(__dirname, "../../collab-server/src/compaction.ts"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_20_X,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 512,
+        bundling: {
+          sourceMap: true,
+          externalModules: [],
+          // Lambda CJS bundles have no import.meta.url; provide the known
+          // runtime path so createRequire(import.meta.url) in compaction.ts works.
+          define: { "import.meta.url": '"file:///var/task/index.js"' },
+          commandHooks: {
+            beforeBundling: () => [],
+            beforeInstall: () => [],
+            // yjs is loaded via createRequire (a shadowed local variable), so
+            // esbuild's static analysis leaves it as a dynamic require call
+            // rather than inlining it. Copy yjs + its sole dep (lib0) next to
+            // the bundle so the runtime require can find them.
+            afterBundling: (_inputDir, outputDir) => [
+              `mkdir -p "${outputDir}/node_modules"`,
+              `cp -r "${path.join(__dirname, "../../node_modules/yjs")}" "${outputDir}/node_modules/"`,
+              `cp -r "${path.join(__dirname, "../../node_modules/lib0")}" "${outputDir}/node_modules/"`,
+            ],
+          },
+        },
+        environment: {
+          NODE_ENV: "production",
+          S3_BUCKET_LOGS: this.editHistoryBucket.bucketName,
+          DYNAMODB_TABLE_SESSIONS: this.sessionsTable.tableName,
+        },
+      }
+    );
+
+    this.editHistoryBucket.grantReadWrite(compactionFn);
+    this.editHistoryBucket.grantDelete(compactionFn);
+    this.sessionsTable.grantReadWriteData(compactionFn);
+
+    const compactionSchedule = new events.Rule(this, "CompactionSchedule", {
+      ruleName: "CompactionSchedule",
+      schedule: events.Schedule.cron({ minute: "0", hour: "4" }),
+    });
+    compactionSchedule.addTarget(new targets.LambdaFunction(compactionFn));
+
+    new cdk.CfnOutput(this, "CompactionFunctionName", {
+      value: compactionFn.functionName,
+      exportName: "CodeCollab-CompactionFunctionName",
     });
   }
 }
