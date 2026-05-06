@@ -159,8 +159,16 @@ Table: `codecollab-sessions` (partition key: `sessionId`)
 | `yjsState` | B | Compacted Yjs binary (written on last-client disconnect) |
 | `createdAt` | S | ISO 8601 timestamp |
 | `updatedAt` | S | ISO 8601 timestamp |
+| `expiresAt` | N | Unix epoch seconds — DynamoDB TTL attribute. Auto-deletes expired sessions. |
 
 `saveSessionState` uses `UpdateItem` (not `PutItem`) so that flushing `yjsState` does not overwrite session metadata.
+
+### Session lifecycle
+
+- Sessions are created with `expiresAt` set to 30 days from creation.
+- Every time the Yjs state is flushed to DynamoDB (last client disconnects), `expiresAt` is refreshed to 30 days from now.
+- Active sessions never expire. Only sessions with no activity for 30 days are auto-deleted by DynamoDB TTL.
+- DynamoDB handles deletion asynchronously (typically within 48 hours of expiry).
 
 ## Environment variables
 
@@ -239,3 +247,23 @@ The project is ESM (`"type": "module"`), but `y-websocket/bin/utils.js` is CJS a
 
 **Why `UpdateItem` for `saveSessionState`?**
 `PutItem` replaces the entire DynamoDB row. When flushing `{sessionId, yjsState, updatedAt}`, it would wipe `name`, `language`, `ownerId`, etc. `UpdateItem` only touches the specified attributes.
+
+## Testing
+
+### Stress test
+
+```bash
+# Run against live ALB (default)
+node tests/stress-test.mjs
+
+# Run against custom host
+node tests/stress-test.mjs my-alb-url.elb.amazonaws.com
+```
+
+The stress test connects 4 WebSocket clients to the same session via the ALB, each sends 200 rapid edits concurrently (800 total), then verifies:
+- All 4 clients converge to identical content (zero divergence)
+- Each client's edits are present (200 A, 200 B, 200 C, 200 D)
+- Content persists after full disconnect and reconnect
+- Content survives simulated ECS task replacement
+
+**Results (Week 3):** 9/9 passed, 7,692 edits/sec throughput.

@@ -17,7 +17,8 @@ sessionRouter.post("/", async (req, res) => {
   }
   const sessionId = randomUUID()
   const now = new Date().toISOString()
-  const session = { sessionId, name, language, ownerId, isPublic, createdAt: now, updatedAt: now }
+  const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 // 30 days from now
+  const session = { sessionId, name, language, ownerId, isPublic, createdAt: now, updatedAt: now, expiresAt }
   try {
     await dynamo.createSession(session)
     logger.info({ sessionId }, "Session created")
@@ -68,7 +69,8 @@ sessionRouter.post("/:id/duplicate", async (req, res) => {
 
     const newId = randomUUID()
     const now = new Date().toISOString()
-    const newSession = { sessionId: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now }
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+    const newSession = { sessionId: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now, expiresAt }
 
     await dynamo.createSession(newSession)
     const state = await dynamo.loadSessionState(req.params.id)
