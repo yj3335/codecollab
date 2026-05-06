@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import {
+  ApiError,
   executionWsBaseUrl,
   postRun,
   type StreamEvent,
@@ -27,12 +28,19 @@ export function useExecution() {
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<ApiError["kind"] | null>(null);
   const stdoutBufRef = useRef("");
+  const lastRequestRef = useRef<{
+    code: string;
+    sessionId: string;
+    language: string;
+  } | null>(null);
 
   const clear = useCallback(() => {
     stdoutBufRef.current = "";
     setLines([]);
     setError(null);
+    setErrorKind(null);
   }, []);
 
   const pushLines = useCallback((fn: (prev: OutputLine[]) => OutputLine[]) => {
@@ -61,6 +69,7 @@ export function useExecution() {
   const run = useCallback(
     async (code: string, sessionId: string, language: string) => {
       clear();
+      lastRequestRef.current = { code, sessionId, language };
       setRunning(true);
       try {
         const result = await postRun({ sessionId, code, language });
@@ -95,7 +104,8 @@ export function useExecution() {
                     pushLines((prev) => [...prev, { kind: "meta", text: `\n${msg.data}\n` }]);
                   }
                 } else if (msg.type === "error") {
-                  setError(msg.data);
+                  setError(`Run stream error: ${msg.data}`);
+                  setErrorKind("server");
                 }
               } catch {
                 /* ignore malformed frames */
@@ -108,7 +118,19 @@ export function useExecution() {
           flushStdout();
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Run failed");
+        if (e instanceof ApiError) {
+          setErrorKind(e.kind);
+          if (e.kind === "timeout") {
+            setError("Execution timed out. Reduce runtime or increase timeout and retry.");
+          } else if (e.kind === "network") {
+            setError("Could not reach execution service. Check that it is running.");
+          } else {
+            setError(e.message);
+          }
+        } else {
+          setError("Run failed.");
+          setErrorKind("unknown");
+        }
       } finally {
         setRunning(false);
       }
@@ -116,5 +138,13 @@ export function useExecution() {
     [clear, feedStdout, flushStdout, pushLines]
   );
 
-  return { lines, running, error, run, clear };
+  const rerun = useCallback(async () => {
+    const last = lastRequestRef.current;
+    if (!last || running) {
+      return;
+    }
+    await run(last.code, last.sessionId, last.language);
+  }, [run, running]);
+
+  return { lines, running, error, errorKind, run, clear, rerun };
 }

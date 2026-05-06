@@ -2,6 +2,7 @@ import { DiffEditor } from "@monaco-editor/react";
 
 type TranslationDiffViewProps = {
   open: boolean;
+  loading?: boolean;
   original: string;
   modified: string;
   originalLanguage?: string;
@@ -15,6 +16,7 @@ type TranslationDiffViewProps = {
 
 export function TranslationDiffView({
   open,
+  loading = false,
   original,
   modified,
   originalLanguage = "python",
@@ -51,11 +53,21 @@ export function TranslationDiffView({
         }}
       />
       <div className="diff-actions">
-        <button type="button" className="toolbar-btn subtle" onClick={onDismiss}>
+        <button
+          type="button"
+          className="toolbar-btn subtle"
+          onClick={onDismiss}
+          disabled={loading}
+        >
           Dismiss
         </button>
-        <button type="button" className="toolbar-btn primary" onClick={onAccept}>
-          Accept
+        <button
+          type="button"
+          className="toolbar-btn primary"
+          onClick={onAccept}
+          disabled={loading}
+        >
+          {loading ? "Applying..." : "Accept"}
         </button>
       </div>
     </section>

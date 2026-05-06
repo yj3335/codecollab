@@ -29,6 +29,56 @@ type CollabEnvelope<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+export class ApiError extends Error {
+  kind: "not_found" | "network" | "timeout" | "server" | "validation" | "unknown";
+  status?: number;
+
+  constructor(
+    message: string,
+    kind: ApiError["kind"] = "unknown",
+    status?: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+function toApiError(message: string, status?: number): ApiError {
+  if (status === 404) return new ApiError(message, "not_found", status);
+  if (status === 400 || status === 422) {
+    return new ApiError(message, "validation", status);
+  }
+  if (typeof status === "number" && status >= 500) {
+    return new ApiError(message, "server", status);
+  }
+  return new ApiError(message, "unknown", status);
+}
+
+function normalizeAxiosError(error: unknown): ApiError {
+  if (error instanceof ApiError) {
+    return error;
+  }
+  if (!axios.isAxiosError(error)) {
+    return new ApiError("Unexpected request failure", "unknown");
+  }
+  if (error.code === "ECONNABORTED") {
+    return new ApiError("Request timed out. Please try again.", "timeout");
+  }
+  if (!error.response) {
+    return new ApiError(
+      "Network issue while contacting the service. Check connectivity and retry.",
+      "network"
+    );
+  }
+  const payload = error.response.data as { error?: string } | undefined;
+  return toApiError(
+    payload?.error ?? `Request failed (${error.response.status})`,
+    error.response.status
+  );
+}
+
 function unwrapCollab<T>(response: { status: number; data: unknown }, label: string): T {
   const envelope = response.data as CollabEnvelope<T>;
   if (response.status >= 400 || !envelope || typeof envelope !== "object") {
@@ -36,13 +86,14 @@ function unwrapCollab<T>(response: { status: number; data: unknown }, label: str
       envelope && "error" in envelope && typeof envelope.error === "string"
         ? envelope.error
         : `Request failed (${response.status})`;
-    throw new Error(msg);
+    throw toApiError(msg, response.status);
   }
   if (!envelope.success || !("data" in envelope)) {
-    throw new Error(
+    throw toApiError(
       "error" in envelope && typeof envelope.error === "string"
         ? envelope.error
-        : label
+        : label,
+      response.status
     );
   }
   return envelope.data;
@@ -56,47 +107,59 @@ export type CreateSessionBody = {
 };
 
 export async function createSession(overrides?: Partial<CreateSessionBody>) {
-  const body: CreateSessionBody = {
-    name:
-      overrides?.name ??
-      process.env.REACT_APP_DEFAULT_SESSION_NAME ??
-      "Untitled session",
-    language:
-      overrides?.language ?? process.env.REACT_APP_DEFAULT_LANGUAGE ?? "python",
-    ownerId: overrides?.ownerId ?? getOrCreateOwnerId(),
-    isPublic: overrides?.isPublic ?? false,
-  };
+  try {
+    const body: CreateSessionBody = {
+      name:
+        overrides?.name ??
+        process.env.REACT_APP_DEFAULT_SESSION_NAME ??
+        "Untitled session",
+      language:
+        overrides?.language ?? process.env.REACT_APP_DEFAULT_LANGUAGE ?? "python",
+      ownerId: overrides?.ownerId ?? getOrCreateOwnerId(),
+      isPublic: overrides?.isPublic ?? false,
+    };
 
-  const response = await collabApi.post<CollabEnvelope<SessionRecord>>("/api/sessions", body, {
-    validateStatus: () => true,
-  });
+    const response = await collabApi.post<CollabEnvelope<SessionRecord>>("/api/sessions", body, {
+      validateStatus: () => true,
+    });
 
-  const data = unwrapCollab<SessionRecord>(response, "Failed to create session");
-  const id = data.sessionId;
-  if (!id) {
-    throw new Error("Create session response missing sessionId");
+    const data = unwrapCollab<SessionRecord>(response, "Failed to create session");
+    const id = data.sessionId;
+    if (!id) {
+      throw new ApiError("Create session response missing sessionId", "unknown");
+    }
+    return id;
+  } catch (error) {
+    throw normalizeAxiosError(error);
   }
-  return id;
 }
 
 export async function getSession(sessionId: string): Promise<SessionRecord> {
-  const response = await collabApi.get<CollabEnvelope<SessionRecord>>(
-    `/api/sessions/${encodeURIComponent(sessionId)}`,
-    { validateStatus: () => true }
-  );
-  return unwrapCollab<SessionRecord>(response, "Failed to load session");
+  try {
+    const response = await collabApi.get<CollabEnvelope<SessionRecord>>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { validateStatus: () => true }
+    );
+    return unwrapCollab<SessionRecord>(response, "Failed to load session");
+  } catch (error) {
+    throw normalizeAxiosError(error);
+  }
 }
 
 export async function patchSessionLanguage(
   sessionId: string,
   language: string
 ): Promise<SessionRecord> {
-  const response = await collabApi.patch<CollabEnvelope<SessionRecord>>(
-    `/api/sessions/${encodeURIComponent(sessionId)}`,
-    { language },
-    { validateStatus: () => true }
-  );
-  return unwrapCollab<SessionRecord>(response, "Failed to update session language");
+  try {
+    const response = await collabApi.patch<CollabEnvelope<SessionRecord>>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { language },
+      { validateStatus: () => true }
+    );
+    return unwrapCollab<SessionRecord>(response, "Failed to update session language");
+  } catch (error) {
+    throw normalizeAxiosError(error);
+  }
 }
 
 export type RunRequest = {
@@ -127,14 +190,18 @@ type ExecutionEnvelope<T> = {
 };
 
 export async function postRun(body: RunRequest): Promise<RunResult> {
-  const response = await executionApi.post<ExecutionEnvelope<RunResult>>("/api/run", body, {
-    validateStatus: () => true,
-  });
-  const env = response.data;
-  if (response.status >= 400 || !env?.success || !env.data) {
-    throw new Error(env?.error ?? `Run failed (${response.status})`);
+  try {
+    const response = await executionApi.post<ExecutionEnvelope<RunResult>>("/api/run", body, {
+      validateStatus: () => true,
+    });
+    const env = response.data;
+    if (response.status >= 400 || !env?.success || !env.data) {
+      throw toApiError(env?.error ?? `Run failed (${response.status})`, response.status);
+    }
+    return env.data;
+  } catch (error) {
+    throw normalizeAxiosError(error);
   }
-  return env.data;
 }
 
 export type StreamEvent = {
@@ -167,14 +234,18 @@ export type TranslationResult = {
 };
 
 export async function postTranslate(body: TranslationRequest): Promise<TranslationResult> {
-  const response = await collabApi.post<CollabEnvelope<TranslationResult>>(
-    "/api/translate",
-    body,
-    { validateStatus: () => true }
-  );
-  const data = unwrapCollab<TranslationResult>(response, "Translation failed");
-  if (!data.translatedCode) {
-    throw new Error("Translation response missing translatedCode");
+  try {
+    const response = await collabApi.post<CollabEnvelope<TranslationResult>>(
+      "/api/translate",
+      body,
+      { validateStatus: () => true }
+    );
+    const data = unwrapCollab<TranslationResult>(response, "Translation failed");
+    if (!data.translatedCode) {
+      throw new ApiError("Translation response missing translatedCode", "unknown");
+    }
+    return data;
+  } catch (error) {
+    throw normalizeAxiosError(error);
   }
-  return data;
 }

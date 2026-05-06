@@ -88,3 +88,8 @@ frontend/
 - **CORS or wrong port:** Align `REACT_APP_*` URLs with where collab-server and execution-api actually listen.
 - **Run never streams:** Confirm execution-api is up and `REACT_APP_EXECUTION_API_URL` matches; the app expects the stream at `ws(s)://<execution-host>/api/run/<runId>/stream`.
 - **Session create fails:** Collab-server requires `name`, `language`, and `ownerId`; the app generates and persists `ownerId` in `localStorage` under `codecollab_owner_id`.
+
+## Week 3 artifacts
+
+- CP-5 manual verification checklist: [`docs/week3-cp5-checklist.md`](docs/week3-cp5-checklist.md)
+- Person A report notes: [`docs/persona-frontend-yjs-notes.md`](docs/persona-frontend-yjs-notes.md)
