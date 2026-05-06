@@ -15,6 +15,11 @@ export interface ComputeStackProps extends cdk.StackProps {
 
 export class ComputeStack extends cdk.Stack {
   public readonly cluster: ecs.Cluster;
+  public readonly albDnsName: string;
+  public readonly albFullName: string;
+  public readonly collabServiceName: string;
+  public readonly executionApiServiceName: string;
+  public readonly frontendServiceName: string;
 
   constructor(scope: Construct, id: string, props: ComputeStackProps) {
     super(scope, id, props);
@@ -73,6 +78,8 @@ export class ComputeStack extends cdk.Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       securityGroup: albSg,
     });
+    this.albDnsName = alb.loadBalancerDnsName;
+    this.albFullName = alb.loadBalancerFullName;
 
     // ── Per-service task roles ────────────────────────────────────────────────
 
@@ -413,6 +420,10 @@ export class ComputeStack extends cdk.Stack {
       scaleInCooldown: cdk.Duration.seconds(300),
       scaleOutCooldown: cdk.Duration.seconds(120),
     });
+
+    this.collabServiceName = collabService.serviceName;
+    this.executionApiServiceName = executionApiService.serviceName;
+    this.frontendServiceName = frontendService.serviceName;
 
     // ── translation Lambda target ─────────────────────────────────────────────
     //
