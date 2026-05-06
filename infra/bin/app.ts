@@ -3,6 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import { NetworkStack } from "../lib/network-stack";
 import { DataStack } from "../lib/data-stack";
 import { ComputeStack } from "../lib/compute-stack";
+import { FrontendStack } from "../lib/frontend-stack";
 
 const app = new cdk.App();
 
@@ -39,3 +40,15 @@ const computeStack = new ComputeStack(app, "CodeCollab-ComputeStack", {
   tags,
 });
 computeStack.addDependency(dataStack);
+
+const frontendStack = new FrontendStack(app, "CodeCollab-FrontendStack", {
+  env,
+  albDnsName: computeStack.albDnsName,
+  domainName: app.node.tryGetContext("domainName"),
+  hostedZoneId: app.node.tryGetContext("hostedZoneId"),
+  hostedZoneName: app.node.tryGetContext("hostedZoneName"),
+  description:
+    "S3 static hosting, CloudFront CDN, and optional Route 53 for CodeCollab",
+  tags,
+});
+frontendStack.addDependency(computeStack);

@@ -15,6 +15,7 @@ export interface ComputeStackProps extends cdk.StackProps {
 
 export class ComputeStack extends cdk.Stack {
   public readonly cluster: ecs.Cluster;
+  public readonly albDnsName: string;
 
   constructor(scope: Construct, id: string, props: ComputeStackProps) {
     super(scope, id, props);
@@ -73,6 +74,7 @@ export class ComputeStack extends cdk.Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       securityGroup: albSg,
     });
+    this.albDnsName = alb.loadBalancerDnsName;
 
     // ── Per-service task roles ────────────────────────────────────────────────
 
