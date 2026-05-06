@@ -1,8 +1,11 @@
 import { Router } from "express"
 import { randomUUID } from "crypto"
-import * as Y from "yjs"
+import { createRequire } from "module"
 import { DynamoDBPersistence } from "./persistence.js"
 import { logger } from "./logger.js"
+
+const require = createRequire(import.meta.url)
+const Y = require("yjs")
 
 export const sessionRouter = Router()
 const dynamo = new DynamoDBPersistence()
@@ -12,12 +15,13 @@ sessionRouter.post("/", async (req, res) => {
   if (!name || !language || !ownerId) {
     return res.status(400).json({ success: false, error: "name, language, and ownerId are required" })
   }
-  const id = randomUUID()
+  const sessionId = randomUUID()
   const now = new Date().toISOString()
-  const session = { id, name, language, ownerId, isPublic, createdAt: now, updatedAt: now }
+  const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 // 30 days from now
+  const session = { sessionId, name, language, ownerId, isPublic, createdAt: now, updatedAt: now, expiresAt }
   try {
     await dynamo.createSession(session)
-    logger.info({ sessionId: id }, "Session created")
+    logger.info({ sessionId }, "Session created")
     return res.status(201).json({ success: true, data: session })
   } catch (err) {
     logger.error({ err }, "createSession failed")
@@ -36,6 +40,24 @@ sessionRouter.get("/:id", async (req, res) => {
   }
 })
 
+sessionRouter.patch("/:id", async (req, res) => {
+  const { language } = req.body as { language?: string }
+  if (!language || typeof language !== "string") {
+    return res.status(400).json({ success: false, error: "language is required" })
+  }
+  try {
+    const existing = await dynamo.getSession(req.params.id)
+    if (!existing) return res.status(404).json({ success: false, error: "Not found" })
+    await dynamo.updateSessionLanguage(req.params.id, language)
+    const session = await dynamo.getSession(req.params.id)
+    logger.info({ sessionId: req.params.id, language }, "Session language updated")
+    return res.json({ success: true, data: session })
+  } catch (err) {
+    logger.error({ err }, "patchSession failed")
+    return res.status(500).json({ success: false, error: "Failed to update session" })
+  }
+})
+
 sessionRouter.post("/:id/duplicate", async (req, res) => {
   const { newName, ownerId } = req.body
   if (!newName || !ownerId) {
@@ -47,7 +69,8 @@ sessionRouter.post("/:id/duplicate", async (req, res) => {
 
     const newId = randomUUID()
     const now = new Date().toISOString()
-    const newSession = { id: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now }
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+    const newSession = { sessionId: newId, name: newName, language: original.language, ownerId, isPublic: false, createdAt: now, updatedAt: now, expiresAt }
 
     await dynamo.createSession(newSession)
     const state = await dynamo.loadSessionState(req.params.id)

@@ -2,6 +2,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb"
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb"
 import { logger } from "./logger.js"
@@ -16,13 +17,14 @@ const client = new DynamoDBClient({
 })
 
 export interface SessionRecord {
-  id: string
+  sessionId: string
   name: string
   language: string
   ownerId: string
   isPublic: boolean
   createdAt: string
   updatedAt: string
+  expiresAt?: number // Unix epoch seconds — DynamoDB TTL
 }
 
 export class DynamoDBPersistence {
@@ -31,7 +33,7 @@ export class DynamoDBPersistence {
       const result = await client.send(
         new GetItemCommand({
           TableName: TABLE,
-          Key: marshall({ id: sessionId }),
+          Key: marshall({ sessionId }),
           ProjectionExpression: "#yjs",
           ExpressionAttributeNames: { "#yjs": "yjsState" },
         })
@@ -47,18 +49,23 @@ export class DynamoDBPersistence {
   }
 
   async saveSessionState(sessionId: string, state: Uint8Array): Promise<void> {
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
     try {
       await client.send(
-        new PutItemCommand({
+        new UpdateItemCommand({
           TableName: TABLE,
-          Item: marshall(
-            {
-              id: sessionId,
-              yjsState: Buffer.from(state),
-              updatedAt: new Date().toISOString(),
-            },
-            { removeUndefinedValues: true }
-          ),
+          Key: marshall({ sessionId }),
+          UpdateExpression: "SET #yjs = :state, #ts = :now, #ttl = :exp",
+          ExpressionAttributeNames: {
+            "#yjs": "yjsState",
+            "#ts": "updatedAt",
+            "#ttl": "expiresAt",
+          },
+          ExpressionAttributeValues: marshall({
+            ":state": Buffer.from(state),
+            ":now": new Date().toISOString(),
+            ":exp": expiresAt,
+          }),
         })
       )
     } catch (err) {
@@ -73,11 +80,11 @@ export class DynamoDBPersistence {
         new PutItemCommand({
           TableName: TABLE,
           Item: marshall(session, { removeUndefinedValues: true }),
-          ConditionExpression: "attribute_not_exists(id)",
+          ConditionExpression: "attribute_not_exists(sessionId)",
         })
       )
     } catch (err) {
-      logger.error({ sessionId: session.id, err }, "DynamoDB createSession failed")
+      logger.error({ sessionId: session.sessionId, err }, "DynamoDB createSession failed")
       throw err
     }
   }
@@ -87,7 +94,7 @@ export class DynamoDBPersistence {
       const result = await client.send(
         new GetItemCommand({
           TableName: TABLE,
-          Key: marshall({ id: sessionId }),
+          Key: marshall({ sessionId }),
         })
       )
       if (!result.Item) return null
@@ -96,6 +103,30 @@ export class DynamoDBPersistence {
       return metadata as SessionRecord
     } catch (err) {
       logger.error({ sessionId, err }, "DynamoDB getSession failed")
+      throw err
+    }
+  }
+
+  async updateSessionLanguage(sessionId: string, language: string): Promise<void> {
+    const now = new Date().toISOString()
+    try {
+      await client.send(
+        new UpdateItemCommand({
+          TableName: TABLE,
+          Key: marshall({ sessionId }),
+          UpdateExpression: "SET #lang = :lang, #ts = :now",
+          ExpressionAttributeNames: {
+            "#lang": "language",
+            "#ts": "updatedAt",
+          },
+          ExpressionAttributeValues: marshall({
+            ":lang": language,
+            ":now": now,
+          }),
+        })
+      )
+    } catch (err) {
+      logger.error({ sessionId, err }, "DynamoDB updateSessionLanguage failed")
       throw err
     }
   }
