@@ -29,6 +29,11 @@ interface GeminiResponse {
 const rateLimitMap = new Map<string, RateLimitEntry>();
 let cachedApiKey: string | undefined;
 
+// ── Structured logging ────────────────────────────────────────────────────────
+
+const log = (msg: string, extra?: Record<string, unknown>): void =>
+  console.log(JSON.stringify({ msg, ...extra, ts: Date.now() }));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function ok(body: unknown): APIGatewayProxyResult {
@@ -121,6 +126,7 @@ async function callGemini(
     });
 
     if ((res.status === 429 || res.status === 503) && attempt < RETRY_DELAYS_MS.length) {
+      log("translation.gemini_retry", { attempt, status: res.status, delayMs: RETRY_DELAYS_MS[attempt] });
       await sleep(RETRY_DELAYS_MS[attempt]);
       continue;
     }
@@ -193,13 +199,22 @@ export const handler = async (
   }
 
   const sid = typeof sessionId === "string" ? sessionId : "anonymous";
+  log("translation.request", {
+    sessionId: sid,
+    sourceLang,
+    targetLang,
+    codeLen: code.length,
+  });
+
   const { allowed, retryAfter } = checkRateLimit(sid);
   if (!allowed) {
+    log("translation.rate_limited", { sessionId: sid, retryAfter });
     return err(429, "Rate limit exceeded", {
       "Retry-After": String(retryAfter),
     });
   }
 
+  const start = Date.now();
   try {
     const apiKey = await getApiKey();
     const systemPrompt = buildSystemPrompt(sourceLang, targetLang);
@@ -207,12 +222,20 @@ export const handler = async (
 
     try {
       const result = parseGeminiOutput(rawResponse);
+      log("translation.success", {
+        sessionId: sid,
+        sourceLang,
+        targetLang,
+        durationMs: Date.now() - start,
+      });
       return ok(result);
     } catch {
+      log("translation.parse_error", { sessionId: sid, durationMs: Date.now() - start });
       return err(500, "Failed to parse translation response");
     }
   } catch (e) {
     const details = e instanceof Error ? e.message : String(e);
+    log("translation.error", { sessionId: sid, durationMs: Date.now() - start, details });
     return {
       statusCode: 500,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
