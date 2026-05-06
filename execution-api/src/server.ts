@@ -1,3 +1,4 @@
+import cors from "cors";
 import express from "express";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -28,6 +29,7 @@ import {
 } from "./run-store.js";
 
 const app = express();
+app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 interface AsyncRunAccepted {
