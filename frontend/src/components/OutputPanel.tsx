@@ -3,15 +3,23 @@ import type { OutputLine } from "../hooks/useExecution";
 type OutputPanelProps = {
   lines: OutputLine[];
   error: string | null;
+  running?: boolean;
   onClear?: () => void;
+  onRetry?: () => void;
 };
 
-export function OutputPanel({ lines, error, onClear }: OutputPanelProps) {
+export function OutputPanel({ lines, error, running = false, onClear, onRetry }: OutputPanelProps) {
   return (
     <section className="output-panel">
       <div className="panel-title">
         <h3>Output</h3>
         <div className="output-toolbar">
+          {running ? <span className="spinner-label">Running...</span> : null}
+          {error && onRetry ? (
+            <button type="button" className="toolbar-btn" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
           {onClear ? (
             <button type="button" className="toolbar-btn subtle" onClick={onClear}>
               Clear
@@ -27,7 +35,11 @@ export function OutputPanel({ lines, error, onClear }: OutputPanelProps) {
       <div className="output-stream ansi-ready">
         {lines.length === 0 && !error ? (
           <pre className="output-pre">
-            <code>$ Run output will appear here…</code>
+            <code>
+              {running
+                ? "$ Executing..."
+                : "$ Run output will appear here. Empty sessions are expected before first run."}
+            </code>
           </pre>
         ) : (
           lines.map((line, i) => {
