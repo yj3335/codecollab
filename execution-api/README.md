@@ -1,12 +1,29 @@
 # execution-api
 
-## Week 2 Scope
+## Scope
 
 - Replace the local Docker stub with real ECS `RunTask`
 - Stream stdout/stderr from CloudWatch Logs through the WebSocket endpoint
 - Upload code to S3 when payloads exceed 4 KB
 - Support image output through `CODECOLLAB_IMAGE`
 - Verify timeout, memory, network, uid, and read-only-root behavior
+- Support both Python and JavaScript languages via dedicated runner images
+  (`codecollab/python-runner`, `codecollab/nodejs-runner`)
+
+## Supported languages
+
+The `language` field on `POST /api/run` accepts `"python"` or `"javascript"`
+(also `py`, `js`, `nodejs`). Each language routes to a dedicated ECS task
+definition / runner image.
+
+| Language    | ECS task definition env var       | Runner image env var      |
+| ----------- | --------------------------------- | ------------------------- |
+| python      | `ECS_PYTHON_TASK_DEFINITION`      | `PYTHON_RUNNER_IMAGE`     |
+| javascript  | `ECS_NODEJS_TASK_DEFINITION`      | `NODEJS_RUNNER_IMAGE`     |
+
+In local mode (`EXECUTION_MODE=local`), the runner image is launched directly
+via `docker run` with the same protocol; in deployed mode the API issues an
+ECS `RunTask` against the Fargate cluster.
 
 ## Implemented Endpoints
 

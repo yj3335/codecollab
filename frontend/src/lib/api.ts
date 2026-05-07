@@ -204,6 +204,29 @@ export async function postRun(body: RunRequest): Promise<RunResult> {
   }
 }
 
+export type RunAck = {
+  runId: string;
+  streamUrl?: string;
+  statusUrl?: string;
+};
+
+export async function postRunAsync(body: RunRequest): Promise<RunAck> {
+  try {
+    const response = await executionApi.post<ExecutionEnvelope<RunAck>>(
+      "/api/run/async",
+      body,
+      { validateStatus: () => true }
+    );
+    const env = response.data;
+    if (response.status >= 400 || !env?.success || !env.data) {
+      throw toApiError(env?.error ?? `Run failed (${response.status})`, response.status);
+    }
+    return env.data;
+  } catch (error) {
+    throw normalizeAxiosError(error);
+  }
+}
+
 export type StreamEvent = {
   type: "start" | "stdout" | "stderr" | "complete" | "error";
   data: string;

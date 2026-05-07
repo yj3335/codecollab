@@ -3,6 +3,7 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import { randomUUID } from "node:crypto";
 import { buildSystemPrompt } from "./prompt";
 
 const CORS_HEADERS = {
@@ -25,41 +26,28 @@ interface GeminiResponse {
   }>;
 }
 
-// Module-level state — survives across warm invocations within the same instance.
 const rateLimitMap = new Map<string, RateLimitEntry>();
 let cachedApiKey: string | undefined;
-
-// ── Structured logging ────────────────────────────────────────────────────────
 
 const log = (msg: string, extra?: Record<string, unknown>): void =>
   console.log(JSON.stringify({ msg, ...extra, ts: Date.now() }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function ok(body: unknown): APIGatewayProxyResult {
-  return {
-    statusCode: 200,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
-
-function err(
-  statusCode: number,
-  message: string,
-  extra?: Record<string, string>
-): APIGatewayProxyResult {
+function envelope<T>(statusCode: number, body: { success: boolean; data?: T; error?: string }, extraHeaders?: Record<string, string>): APIGatewayProxyResult {
   return {
     statusCode,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json", ...extra },
-    body: JSON.stringify({ error: message }),
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify({ ...body, statusCode }),
   };
 }
+
+const ok = <T>(data: T): APIGatewayProxyResult =>
+  envelope(200, { success: true, data });
+
+const fail = (statusCode: number, error: string, extraHeaders?: Record<string, string>): APIGatewayProxyResult =>
+  envelope(statusCode, { success: false, error }, extraHeaders);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((res) => setTimeout(res, ms));
-
-// ── Rate limiting ─────────────────────────────────────────────────────────────
 
 function checkRateLimit(sessionId: string): {
   allowed: boolean;
@@ -71,7 +59,8 @@ function checkRateLimit(sessionId: string): {
     rateLimitMap.set(sessionId, { count: 1, resetTime: now + 60_000 });
     return { allowed: true };
   }
-  if (entry.count >= 5) {
+  // Per-session throttle: 10 req/min (per shared/contracts.md).
+  if (entry.count >= 10) {
     return {
       allowed: false,
       retryAfter: Math.ceil((entry.resetTime - now) / 1000),
@@ -80,8 +69,6 @@ function checkRateLimit(sessionId: string): {
   entry.count++;
   return { allowed: true };
 }
-
-// ── Secrets Manager ───────────────────────────────────────────────────────────
 
 async function getApiKey(): Promise<string> {
   if (cachedApiKey !== undefined) return cachedApiKey;
@@ -95,11 +82,22 @@ async function getApiKey(): Promise<string> {
     })
   );
   if (!response.SecretString) throw new Error("Gemini secret has no string value");
-  cachedApiKey = (JSON.parse(response.SecretString) as { apiKey: string }).apiKey;
-  return cachedApiKey;
-}
 
-// ── Gemini API ────────────────────────────────────────────────────────────────
+  const raw = response.SecretString.trim();
+  // Accept either a JSON object { "apiKey": "..." } or a raw key string.
+  let key: string;
+  if (raw.startsWith("{")) {
+    const parsed = JSON.parse(raw) as { apiKey?: string };
+    if (typeof parsed.apiKey !== "string") {
+      throw new Error("Gemini secret JSON missing apiKey");
+    }
+    key = parsed.apiKey;
+  } else {
+    key = raw;
+  }
+  cachedApiKey = key;
+  return key;
+}
 
 async function callGemini(
   apiKey: string,
@@ -147,7 +145,7 @@ async function callGemini(
 
 function parseGeminiOutput(raw: string): {
   translatedCode: string;
-  notes: string;
+  explanation: string;
 } {
   // Strip markdown fences that Gemini sometimes wraps around JSON despite instructions.
   const stripped = raw
@@ -155,16 +153,14 @@ function parseGeminiOutput(raw: string): {
     .replace(/\s*```\s*$/m, "")
     .trim();
   const parsed = JSON.parse(stripped) as Record<string, unknown>;
-  if (
-    typeof parsed.translatedCode !== "string" ||
-    typeof parsed.notes !== "string"
-  ) {
-    throw new Error("Response missing translatedCode or notes fields");
+  const translatedCode = parsed.translatedCode;
+  // Accept both new ("explanation") and legacy ("notes") keys from Gemini output.
+  const explanation = parsed.explanation ?? parsed.notes;
+  if (typeof translatedCode !== "string" || typeof explanation !== "string") {
+    throw new Error("Response missing translatedCode/explanation fields");
   }
-  return { translatedCode: parsed.translatedCode, notes: parsed.notes };
+  return { translatedCode, explanation };
 }
-
-// ── Handler ───────────────────────────────────────────────────────────────────
 
 export const handler = async (
   event: APIGatewayProxyEvent
@@ -174,42 +170,45 @@ export const handler = async (
   }
 
   if (event.httpMethod !== "POST") {
-    return err(405, "Method not allowed");
+    return fail(405, "Method not allowed");
   }
 
-  let body: {
-    code?: unknown;
-    sourceLang?: unknown;
-    targetLang?: unknown;
-    sessionId?: unknown;
-  } = {};
+  let body: Record<string, unknown> = {};
   try {
-    body = JSON.parse(event.body ?? "{}") as typeof body;
+    body = JSON.parse(event.body ?? "{}") as Record<string, unknown>;
   } catch {
-    return err(400, "Invalid JSON body");
+    return fail(400, "Invalid JSON body");
   }
 
-  const { code, sourceLang, targetLang, sessionId } = body;
+  // Accept both new (sourceLanguage/targetLanguage) and legacy (sourceLang/targetLang) field names.
+  const code = body.code;
+  const sourceLanguage = body.sourceLanguage ?? body.sourceLang;
+  const targetLanguage = body.targetLanguage ?? body.targetLang;
+  const sessionId = body.sessionId;
+
   if (
     typeof code !== "string" ||
-    typeof sourceLang !== "string" ||
-    typeof targetLang !== "string"
+    typeof sourceLanguage !== "string" ||
+    typeof targetLanguage !== "string"
   ) {
-    return err(400, "Missing required fields: code, sourceLang, targetLang");
+    return fail(
+      400,
+      "Missing required fields: code, sourceLanguage, targetLanguage"
+    );
   }
 
   const sid = typeof sessionId === "string" ? sessionId : "anonymous";
   log("translation.request", {
     sessionId: sid,
-    sourceLang,
-    targetLang,
+    sourceLanguage,
+    targetLanguage,
     codeLen: code.length,
   });
 
   const { allowed, retryAfter } = checkRateLimit(sid);
   if (!allowed) {
     log("translation.rate_limited", { sessionId: sid, retryAfter });
-    return err(429, "Rate limit exceeded", {
+    return fail(429, "Rate limit exceeded", {
       "Retry-After": String(retryAfter),
     });
   }
@@ -217,29 +216,38 @@ export const handler = async (
   const start = Date.now();
   try {
     const apiKey = await getApiKey();
-    const systemPrompt = buildSystemPrompt(sourceLang, targetLang);
+    const systemPrompt = buildSystemPrompt(sourceLanguage, targetLanguage);
     const rawResponse = await callGemini(apiKey, systemPrompt, code);
 
+    let parsed: { translatedCode: string; explanation: string };
     try {
-      const result = parseGeminiOutput(rawResponse);
-      log("translation.success", {
-        sessionId: sid,
-        sourceLang,
-        targetLang,
-        durationMs: Date.now() - start,
-      });
-      return ok(result);
+      parsed = parseGeminiOutput(rawResponse);
     } catch {
       log("translation.parse_error", { sessionId: sid, durationMs: Date.now() - start });
-      return err(500, "Failed to parse translation response");
+      return fail(500, "Failed to parse translation response");
     }
+
+    const result = {
+      id: randomUUID(),
+      sessionId: typeof sessionId === "string" ? sessionId : undefined,
+      sourceLanguage,
+      targetLanguage,
+      originalCode: code,
+      translatedCode: parsed.translatedCode,
+      explanation: parsed.explanation,
+      timestamp: new Date().toISOString(),
+    };
+
+    log("translation.success", {
+      sessionId: sid,
+      sourceLanguage,
+      targetLanguage,
+      durationMs: Date.now() - start,
+    });
+    return ok(result);
   } catch (e) {
     const details = e instanceof Error ? e.message : String(e);
     log("translation.error", { sessionId: sid, durationMs: Date.now() - start, details });
-    return {
-      statusCode: 500,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Translation failed", details }),
-    };
+    return fail(500, `Translation failed: ${details}`);
   }
 };

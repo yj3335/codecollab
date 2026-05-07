@@ -42,6 +42,7 @@ cdk.out/
 *.d.ts
 *.js
 !jest.config.js
+!runners/nodejs/runner.js
 
 # Docker
 .dockerignore

@@ -96,6 +96,11 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() })
 })
 
+// Lightweight ALB health probe — no JSON parsing, no extra headers.
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true })
+})
+
 app.use("/api/sessions", sessionRouter)
 
 // --- WebSocket server ---

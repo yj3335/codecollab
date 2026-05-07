@@ -1,32 +1,38 @@
 // Session and document types
 export interface Session {
-  id: string;
+  sessionId: string;
   name: string;
   language: string;
   createdAt: string;
   updatedAt: string;
   ownerId: string;
   isPublic: boolean;
-  code: string;
-  yDocState: Uint8Array;
+  expiresAt?: number;
 }
 
 export interface SessionMetadata {
-  id: string;
+  sessionId: string;
   name: string;
   language: string;
   createdAt: string;
   updatedAt: string;
   ownerId: string;
+  isPublic: boolean;
 }
 
 // Code execution types
 export interface RunRequest {
   sessionId: string;
   code: string;
-  language: string;
+  language: "python" | "javascript";
   stdin?: string;
   timeout?: number;
+}
+
+// Initial response from POST /api/run (async kickoff)
+export interface RunAck {
+  runId: string;
+  status: "queued" | "running";
 }
 
 export interface RunResult {
@@ -52,12 +58,12 @@ export interface TranslationRequest {
   code: string;
   sourceLanguage: string;
   targetLanguage: string;
-  sessionId: string;
+  sessionId?: string;
 }
 
 export interface TranslationResult {
   id: string;
-  sessionId: string;
+  sessionId?: string;
   sourceLanguage: string;
   targetLanguage: string;
   originalCode: string;
@@ -74,7 +80,7 @@ export interface User {
   createdAt: string;
 }
 
-// API response wrapper
+// API response wrapper used by collab-server, execution-api, and translation Lambda
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

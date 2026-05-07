@@ -17,12 +17,23 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
   const undoRef = useRef<Y.UndoManager | null>(null);
   const yTextRef = useRef<Y.Text | null>(null);
 
+  // Keep the latest callback in a ref so the connect effect below depends only
+  // on the actual connection inputs (sessionId + wsUrl). If we put
+  // onStatusChange in the deps, callers that pass an inline function would
+  // change identity on every render, tear down the WebsocketProvider, and
+  // immediately rebuild it — causing a connect/disconnect storm visible in
+  // the collab-server logs.
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
+
   useEffect(() => {
     const doc = new Y.Doc();
     const provider = new WebsocketProvider(wsUrl, sessionId, doc);
     providerRef.current = provider;
     docRef.current = doc;
-    onStatusChange?.("connecting");
+    onStatusChangeRef.current?.("connecting");
 
     const ownerId = getOrCreateOwnerId();
     provider.awareness.setLocalStateField("user", {
@@ -31,7 +42,7 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
     });
 
     const statusHandler = (event: { status: "connected" | "connecting" | "disconnected" }) => {
-      onStatusChange?.(event.status);
+      onStatusChangeRef.current?.(event.status);
     };
 
     provider.on("status", statusHandler);
@@ -46,9 +57,9 @@ export function useYjs({ sessionId, wsUrl, onStatusChange }: UseYjsOptions) {
       docRef.current = null;
       undoRef.current = null;
       yTextRef.current = null;
-      onStatusChange?.("disconnected");
+      onStatusChangeRef.current?.("disconnected");
     };
-  }, [onStatusChange, sessionId, wsUrl]);
+  }, [sessionId, wsUrl]);
 
   const getDocumentText = useCallback(() => yTextRef.current?.toString() ?? "", []);
 

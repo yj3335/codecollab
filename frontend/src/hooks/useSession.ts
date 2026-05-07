@@ -12,11 +12,11 @@ export function useSession(routeSessionId: string) {
     [activeSessionId]
   );
 
-  const onCreateSession = async () => {
+  const onCreateSession = async (language?: string) => {
     setIsCreatingSession(true);
     setCreateError(null);
     try {
-      const nextId = await createSession();
+      const nextId = await createSession(language ? { language } : undefined);
       navigate(`/s/${nextId}`);
     } catch (error) {
       console.error("createSession failed:", error);
@@ -33,8 +33,8 @@ export function useSession(routeSessionId: string) {
   const onCopyShareUrl = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
-    } catch (error) {
-      // Clipboard may be blocked in non-secure contexts.
+    } catch {
+      // Clipboard may be blocked in non-secure contexts; surface failure via banner if needed.
     }
   };
 

@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import AWS from "aws-sdk";
 
 import type { RunRequest, RunResult, StreamEvent } from "../../shared/types.js";
-import { config } from "./config.js";
+import {
+  config,
+  getRunnerConfig,
+  normalizeLanguage,
+  type SupportedLanguage,
+} from "./config.js";
 
 const ecs = new AWS.ECS({ region: config.awsRegion });
 const logs = new AWS.CloudWatchLogs({ region: config.awsRegion });
@@ -141,8 +146,9 @@ const parseLogMessage = (
   return [{ type: "stdout", data: `${message}\n`, timestamp }];
 };
 
-const drainLogs = async (
+const drainLogsForGroup = async (
   sink: ExecutionEventSink,
+  logGroupName: string,
   logStreamName: string,
   state: ParsedLogState,
   nextToken?: string,
@@ -150,7 +156,7 @@ const drainLogs = async (
   try {
     const response = await logs
       .getLogEvents({
-        logGroupName: config.ecsLogGroup,
+        logGroupName,
         logStreamName,
         nextToken,
         startFromHead: !nextToken,
@@ -158,9 +164,7 @@ const drainLogs = async (
       .promise();
 
     for (const event of response.events ?? []) {
-      if (!event.message) {
-        continue;
-      }
+      if (!event.message) continue;
       for (const parsedEvent of parseLogMessage(event.message, state)) {
         sink.emit(parsedEvent);
       }
@@ -176,7 +180,7 @@ const drainLogs = async (
   }
 };
 
-export const executePythonViaEcs = async (
+export const executeViaEcs = async (
   runId: string,
   request: RunRequest,
   sink: ExecutionEventSink,
@@ -184,20 +188,24 @@ export const executePythonViaEcs = async (
   ensureConfiguredForEcs();
   await ensureExpectedAwsAccount();
 
+  const language: SupportedLanguage =
+    normalizeLanguage(request.language) ?? "python";
+  const runner = getRunnerConfig(language);
+
   const startedAt = Date.now();
   const uploadedPayload = await uploadPayloadIfNeeded(runId, request);
   const timeoutSeconds = request.timeout ?? config.runnerTimeoutSeconds;
 
   sink.emit({
     type: "start",
-    data: `Launching ECS task for run ${runId}`,
+    data: `Launching ${language} ECS task for run ${runId}`,
     timestamp: new Date().toISOString(),
   });
 
   try {
     const environment: AWS.ECS.KeyValuePair[] = [
-      { name: "RUN_FILE", value: "/tmp/main.py" },
-      { name: "STDIN_FILE", value: "/tmp/stdin.txt" },
+      { name: "RUN_FILE", value: runner.runFile },
+      { name: "STDIN_FILE", value: runner.stdinFile },
       { name: "RUN_TIMEOUT_SECONDS", value: String(timeoutSeconds) },
       { name: "CODECOLLAB_LOG_FORMAT", value: "framed" },
     ];
@@ -214,7 +222,7 @@ export const executePythonViaEcs = async (
     const runTaskResponse = await ecs
       .runTask({
         cluster: config.ecsCluster,
-        taskDefinition: config.ecsTaskDefinition,
+        taskDefinition: runner.taskDefinition,
         launchType: "FARGATE",
         count: 1,
         startedBy: `codecollab-${runId}`,
@@ -228,7 +236,7 @@ export const executePythonViaEcs = async (
         overrides: {
           containerOverrides: [
             {
-              name: config.ecsRunnerContainerName,
+              name: runner.containerName,
               environment,
             },
           ],
@@ -254,12 +262,18 @@ export const executePythonViaEcs = async (
       throw new Error("Unable to derive ECS task id.");
     }
 
-    const logStreamName = `${config.ecsLogStreamPrefix}/${config.ecsRunnerContainerName}/${taskId}`;
+    const logStreamName = `${runner.logStreamPrefix}/${runner.containerName}/${taskId}`;
     const state: ParsedLogState = { stdout: "", stderr: "" };
     let nextToken: string | undefined;
 
     while (true) {
-      nextToken = await drainLogs(sink, logStreamName, state, nextToken);
+      nextToken = await drainLogsForGroup(
+        sink,
+        runner.logGroup,
+        logStreamName,
+        state,
+        nextToken,
+      );
 
       const described = await ecs
         .describeTasks({
@@ -275,12 +289,18 @@ export const executePythonViaEcs = async (
 
       if (task.lastStatus === "STOPPED") {
         for (let attempt = 0; attempt < 4; attempt += 1) {
-          nextToken = await drainLogs(sink, logStreamName, state, nextToken);
+          nextToken = await drainLogsForGroup(
+            sink,
+            runner.logGroup,
+            logStreamName,
+            state,
+            nextToken,
+          );
           await wait(250);
         }
 
         const container = task.containers?.find(
-          (entry) => entry.name === config.ecsRunnerContainerName,
+          (entry) => entry.name === runner.containerName,
         );
         const exitCode = container?.exitCode ?? 1;
 
@@ -327,3 +347,6 @@ export const executePythonViaEcs = async (
     }
   }
 };
+
+// Back-compat alias for older import sites — prefer executeViaEcs in new code.
+export const executePythonViaEcs = executeViaEcs;
