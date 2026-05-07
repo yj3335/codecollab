@@ -1,0 +1,10 @@
+{
+  "name": "codecollab-nodejs-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js runner image entrypoint for CodeCollab execution-api",
+  "main": "runner.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0"
+  }
+}

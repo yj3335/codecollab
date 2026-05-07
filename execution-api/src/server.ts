@@ -11,9 +11,9 @@ import type {
   RunResult,
   StreamEvent,
 } from "../../shared/types.js";
-import { config } from "./config.js";
-import { executePythonLocally, extractImages } from "./docker-executor.js";
-import { executePythonViaEcs } from "./ecs-executor.js";
+import { config, normalizeLanguage } from "./config.js";
+import { executeLocally, extractImages } from "./docker-executor.js";
+import { executeViaEcs } from "./ecs-executor.js";
 import {
   getRunError,
   getRunResult,
@@ -55,6 +55,10 @@ app.get("/health", (_req, res) => {
   res.json({ success: true, statusCode: 200, data: { ok: true } });
 });
 
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.get("/api/sessions/:sessionId/runs", (req, res) => {
   const { sessionId } = req.params;
   const limit = Number.parseInt(String(req.query.limit ?? "20"), 10);
@@ -72,7 +76,7 @@ app.get("/api/sessions/:sessionId/runs", (req, res) => {
 });
 
 const isSupportedLanguage = (language: string): boolean =>
-  language.toLowerCase() === "python";
+  normalizeLanguage(language) !== undefined;
 
 const buildStreamUrl = (req: express.Request, runId: string): string => {
   const protocol = req.headers["x-forwarded-proto"] ?? req.protocol;
@@ -91,8 +95,8 @@ const executeRun = async (
   try {
     const runResult =
       config.executionMode === "local"
-        ? await executePythonLocally(runId, request, { emit })
-        : await executePythonViaEcs(runId, request, { emit });
+        ? await executeLocally(runId, request, { emit })
+        : await executeViaEcs(runId, request, { emit });
 
     saveRun(runResult);
     markRunTerminal(runId);
@@ -181,7 +185,7 @@ app.post(
     if (!isSupportedLanguage(req.body.language)) {
       res.status(400).json({
         success: false,
-        error: "Week 2 currently supports Python runs only",
+        error: "Unsupported language. Use python or javascript.",
         statusCode: 400,
       });
       return;
@@ -222,7 +226,7 @@ app.post(
     if (!isSupportedLanguage(req.body.language)) {
       res.status(400).json({
         success: false,
-        error: "Week 2 currently supports Python runs only",
+        error: "Unsupported language. Use python or javascript.",
         statusCode: 400,
       });
       return;

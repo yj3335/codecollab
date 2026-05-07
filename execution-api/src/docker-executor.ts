@@ -4,10 +4,20 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 import type { RunRequest, RunResult } from "../../shared/types.js";
-import { config } from "./config.js";
+import {
+  config,
+  getRunnerConfig,
+  normalizeLanguage,
+  type SupportedLanguage,
+} from "./config.js";
 import type { ExecutionEventSink } from "./ecs-executor.js";
 
 const IMAGE_PREFIX = "CODECOLLAB_IMAGE:";
+
+const FILE_NAME_BY_LANGUAGE: Record<SupportedLanguage, string> = {
+  python: "main.py",
+  javascript: "main.js",
+};
 
 const toErrorOutput = (message: string): Pick<RunResult, "stdout" | "stderr" | "exitCode"> => ({
   stdout: "",
@@ -15,14 +25,19 @@ const toErrorOutput = (message: string): Pick<RunResult, "stdout" | "stderr" | "
   exitCode: 1,
 });
 
-export const executePythonLocally = async (
+export const executeLocally = async (
   runId: string,
   request: RunRequest,
   sink: ExecutionEventSink,
 ): Promise<RunResult> => {
+  const language: SupportedLanguage =
+    normalizeLanguage(request.language) ?? "python";
+  const runner = getRunnerConfig(language);
+  const fileName = FILE_NAME_BY_LANGUAGE[language];
+
   const startedAt = Date.now();
   const workspaceDir = await mkdtemp(join(tmpdir(), "codecollab-run-"));
-  const codePath = join(workspaceDir, "main.py");
+  const codePath = join(workspaceDir, fileName);
   const stdinPath = join(workspaceDir, "stdin.txt");
 
   try {
@@ -43,14 +58,14 @@ export const executePythonLocally = async (
       "--pids-limit",
       "64",
       "-e",
-      "RUN_FILE=/workspace/main.py",
+      `RUN_FILE=/workspace/${fileName}`,
       "-e",
-      "STDIN_FILE=/workspace/stdin.txt",
+      `STDIN_FILE=/workspace/stdin.txt`,
       "-e",
       `RUN_TIMEOUT_SECONDS=${timeoutSeconds}`,
       "-v",
       `${workspaceDir}:/workspace:ro`,
-      config.pythonRunnerImage,
+      runner.image,
     ];
 
     const child = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
@@ -60,7 +75,7 @@ export const executePythonLocally = async (
 
     sink.emit({
       type: "start",
-      data: `Launching local Docker runner for run ${runId}`,
+      data: `Launching local Docker ${language} runner for run ${runId}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -132,6 +147,9 @@ export const executePythonLocally = async (
     await rm(workspaceDir, { recursive: true, force: true });
   }
 };
+
+// Back-compat alias for callers that imported the python-specific name.
+export const executePythonLocally = executeLocally;
 
 export const extractImages = (stdout: string): string[] =>
   stdout
