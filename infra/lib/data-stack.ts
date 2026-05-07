@@ -21,6 +21,8 @@ export class DataStack extends cdk.Stack {
   public readonly ecsSecurityGroup: ec2.SecurityGroup;
   public readonly pythonRunnerRepo: ecr.Repository;
   public readonly nodejsRunnerRepo: ecr.Repository;
+  public readonly collabServerRepo: ecr.Repository;
+  public readonly executionApiRepo: ecr.Repository;
   public readonly sessionsTable: dynamodb.Table;
   public readonly editHistoryBucket: s3.Bucket;
   public readonly execStagingBucket: s3.Bucket;
@@ -110,6 +112,22 @@ export class DataStack extends cdk.Stack {
     });
     this.nodejsRunnerRepo.addLifecycleRule(ecrLifecycleRule);
 
+    this.collabServerRepo = new ecr.Repository(this, "CollabServerRepo", {
+      repositoryName: "codecollab/collab-server",
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+    });
+    this.collabServerRepo.addLifecycleRule(ecrLifecycleRule);
+
+    this.executionApiRepo = new ecr.Repository(this, "ExecutionApiRepo", {
+      repositoryName: "codecollab/execution-api",
+      imageScanOnPush: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+    });
+    this.executionApiRepo.addLifecycleRule(ecrLifecycleRule);
+
     new cdk.CfnOutput(this, "PythonRunnerRepoUri", {
       value: this.pythonRunnerRepo.repositoryUri,
       exportName: "CodeCollab-PythonRunnerRepoUri",
@@ -118,6 +136,16 @@ export class DataStack extends cdk.Stack {
     new cdk.CfnOutput(this, "NodejsRunnerRepoUri", {
       value: this.nodejsRunnerRepo.repositoryUri,
       exportName: "CodeCollab-NodejsRunnerRepoUri",
+    });
+
+    new cdk.CfnOutput(this, "CollabServerRepoUri", {
+      value: this.collabServerRepo.repositoryUri,
+      exportName: "CodeCollab-CollabServerRepoUri",
+    });
+
+    new cdk.CfnOutput(this, "ExecutionApiRepoUri", {
+      value: this.executionApiRepo.repositoryUri,
+      exportName: "CodeCollab-ExecutionApiRepoUri",
     });
 
     // ── Security Groups ──────────────────────────────────────────────────────

@@ -88,22 +88,18 @@ export class FrontendStack extends cdk.Stack {
         compress: true,
       },
       additionalBehaviors: {
+        // /api/* covers sessions, run, and translate (all backed by ALB).
         "/api/*": albBehavior,
         "/ws/*": albBehavior,
-        "/translate": albBehavior,
-        "/translate/*": albBehavior,
       },
-      // SPA fallback: S3 returns 403/404 for unknown paths → serve index.html
-      // so React Router can handle client-side navigation.
+      // SPA fallback: S3 with OAC + BlockPublicAccess returns 403 (not 404)
+      // for unknown paths, so we only need the 403 mapping. Mapping 404 here
+      // would clobber legitimate API 404s served from the ALB origin
+      // (e.g., GET /api/sessions/<unknown> → collab-server 404 → frontend
+      // SessionNotFoundView).
       errorResponses: [
         {
           httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: "/index.html",
-          ttl: cdk.Duration.seconds(0),
-        },
-        {
-          httpStatus: 404,
           responseHttpStatus: 200,
           responsePagePath: "/index.html",
           ttl: cdk.Duration.seconds(0),
