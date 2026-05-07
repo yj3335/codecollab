@@ -1,6 +1,6 @@
 # CodeCollab — 3-minute Demo Script
 
-> Public URL: <https://dup2iyfhlam0h.cloudfront.net>
+> Public URL: <https://d2ueiwejqy54yr.cloudfront.net>
 >
 > Run the demo from a Chrome window in normal mode + a second Chrome window
 > in private/incognito mode (different `localStorage` so awareness colors and
@@ -14,10 +14,10 @@
 - [ ] Warm both ECS services with a throwaway Run so the demo Run finishes in
       ~3 s instead of ~50 s:
       ```bash
-      curl -sS -X POST "https://dup2iyfhlam0h.cloudfront.net/api/run/async" \
+      curl -sS -X POST "https://d2ueiwejqy54yr.cloudfront.net/api/run/async" \
         -H 'content-type: application/json' \
         -d '{"sessionId":"warmup","code":"print(1)","language":"python"}'
-      curl -sS -X POST "https://dup2iyfhlam0h.cloudfront.net/api/run/async" \
+      curl -sS -X POST "https://d2ueiwejqy54yr.cloudfront.net/api/run/async" \
         -H 'content-type: application/json' \
         -d '{"sessionId":"warmup","code":"console.log(1)","language":"javascript"}'
       ```
@@ -88,7 +88,7 @@ Open `README.md`. Point at:
 
 ## Beat 5 — Resilience (15 s)
 
-1. Open `https://dup2iyfhlam0h.cloudfront.net/s/does-not-exist-xyz`.
+1. Open `https://d2ueiwejqy54yr.cloudfront.net/s/does-not-exist-xyz`.
 2. Show the `Session not found` view with the `Create new session` CTA.
 3. Click it; new uuid in the URL bar; clean editor.
 

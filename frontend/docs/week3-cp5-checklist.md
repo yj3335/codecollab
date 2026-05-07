@@ -4,10 +4,10 @@ Use this checklist during integration and demo rehearsal.
 
 ## Deployed environment
 
-- **Public URL**: <https://dup2iyfhlam0h.cloudfront.net>
+- **Public URL**: <https://d2ueiwejqy54yr.cloudfront.net>
 - **AWS account**: 209292847448 / us-east-1
-- **ALB DNS** (internal reference): codecollab-alb-517313119.us-east-1.elb.amazonaws.com
-- **CloudFront distribution**: EA46ST179AVW6
+- **ALB DNS** (internal reference): codecollab-alb-605270909.us-east-1.elb.amazonaws.com
+- **CloudFront distribution**: E16W4VX5Y06SC2
 - **CloudWatch dashboard**: <https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=codecollab-dashboard>
 
 ## Preconditions

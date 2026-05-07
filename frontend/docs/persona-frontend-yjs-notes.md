@@ -42,9 +42,9 @@
 
 Deployed environment for the persona demo:
 
-- **Public URL**: <https://dup2iyfhlam0h.cloudfront.net>
+- **Public URL**: <https://d2ueiwejqy54yr.cloudfront.net>
 - **AWS account / region**: 209292847448 / us-east-1
-- **CloudFront distribution**: EA46ST179AVW6
+- **CloudFront distribution**: E16W4VX5Y06SC2
 - **CloudWatch dashboard**: <https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=codecollab-dashboard>
 
 The full 3-minute click-through with fallbacks lives in
@@ -69,7 +69,7 @@ The full 3-minute click-through with fallbacks lives in
    Accept, and confirm the SessionBar language picker flips and the editor
    content swaps. Re-Run to prove the new language works.
 6. **Session-not-found resilience.** Visit
-   `https://dup2iyfhlam0h.cloudfront.net/s/does-not-exist-xyz` to demo the
+   `https://d2ueiwejqy54yr.cloudfront.net/s/does-not-exist-xyz` to demo the
    `Session not found` banner and `Create new session` CTA without leaving
    the SPA.
 7. **WebSocket reconnect.** Toggle the network tab to offline for ~5 s and

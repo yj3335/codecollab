@@ -4,7 +4,7 @@ Real-time collaborative code editor with multi-language support and execution.
 
 ## Live demo
 
-> **Public URL**: <https://dup2iyfhlam0h.cloudfront.net>
+> **Public URL**: <https://d2ueiwejqy54yr.cloudfront.net>
 >
 > Open the URL in two browsers/tabs to try collaboration. The first run after a
 > deploy or long idle takes ~50 s because of an ECS Fargate cold start; later
