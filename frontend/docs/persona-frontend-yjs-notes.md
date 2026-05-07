@@ -40,7 +40,38 @@
 
 ## Demo checkpoints
 
-- Two-tab collaborative edits with live sync.
-- Run output stream with `CODECOLLAB_IMAGE:` inline render.
-- Translate -> diff -> accept path with language flip.
-- Session-not-found and failure banners for resilience demo.
+Deployed environment for the persona demo:
+
+- **Public URL**: <https://dup2iyfhlam0h.cloudfront.net>
+- **AWS account / region**: 209292847448 / us-east-1
+- **CloudFront distribution**: EA46ST179AVW6
+- **CloudWatch dashboard**: <https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=codecollab-dashboard>
+
+The full 3-minute click-through with fallbacks lives in
+[`docs/demo-script.md`](../../docs/demo-script.md). Persona-relevant beats:
+
+1. **Two-tab collaborative edits with live sync.** Open the public URL in a
+   normal Chrome window and a private/incognito window so they get distinct
+   `display_name`/`ownerId` from `localStorage`. Confirm cursor color labels
+   and live `Y.Text` propagation when typing in either window.
+2. **Per-user undo / redo.** Type in window A, press `Ctrl+Z`. Only A's
+   recent ops should revert; window B's edits are untouched (Yjs
+   `UndoManager` scoped to the local client).
+3. **Run output stream with `CODECOLLAB_IMAGE:` inline render.** Use the
+   matplotlib snippet from `docs/demo-script.md` (Beat 3) so the inline PNG
+   sentinel exercises the `OutputPanel` image renderer end-to-end.
+4. **Language picker + Run JavaScript.** Switch the SessionBar language
+   `<select>` to JavaScript, paste `console.log([1,2,3,4].map(x => x*x))`,
+   click Run, and confirm `[1, 4, 9, 16]` arrives over the WebSocket stream.
+   The PATCH to `/api/sessions/<id>` and the JS runner image both light up.
+5. **Translate -> diff -> accept path with language flip.** Translate the
+   Python snippet to JavaScript, show the explanation under the diff, click
+   Accept, and confirm the SessionBar language picker flips and the editor
+   content swaps. Re-Run to prove the new language works.
+6. **Session-not-found resilience.** Visit
+   `https://dup2iyfhlam0h.cloudfront.net/s/does-not-exist-xyz` to demo the
+   `Session not found` banner and `Create new session` CTA without leaving
+   the SPA.
+7. **WebSocket reconnect.** Toggle the network tab to offline for ~5 s and
+   back; the connection-status pill should turn red, then green, and edits
+   from the offline window should replay once reconnected.

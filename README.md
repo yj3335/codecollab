@@ -2,6 +2,19 @@
 
 Real-time collaborative code editor with multi-language support and execution.
 
+## Live demo
+
+> **Public URL**: <https://dup2iyfhlam0h.cloudfront.net>
+>
+> Open the URL in two browsers/tabs to try collaboration. The first run after a
+> deploy or long idle takes ~50 s because of an ECS Fargate cold start; later
+> runs return in a few seconds. Translation needs a real Gemini key in the
+> Secrets Manager secret `codecollab/gemini-api-key` — the demo currently
+> has a placeholder so the Translate flow surfaces a friendly 500.
+
+See [`docs/demo-script.md`](docs/demo-script.md) for the 3-minute click-through
+script.
+
 ## Project Structure
 
 This is a monorepo containing 5 services:
@@ -155,25 +168,89 @@ npm run deploy         # Deploy to AWS
 
 ## Infrastructure
 
-Three CDK stacks are deployed to AWS (`us-east-1`, account `212208751162`):
+Five CDK stacks are deployed to AWS (`us-east-1`, currently account
+`209292847448`):
 
 | Stack | What it owns |
 |---|---|
-| `CodeCollab-NetworkStack` | VPC, public + private subnets |
+| `CodeCollab-NetworkStack` | VPC, public + private subnets, NAT gateways, VPC endpoints |
 | `CodeCollab-DataStack` | DynamoDB (sessions), ElastiCache Redis, S3 buckets (edit history, exec staging), ECR repos, translation Lambda, Yjs compaction Lambda |
-| `CodeCollab-ComputeStack` | ECS Fargate cluster, ALB, Fargate services, auto-scaling |
+| `CodeCollab-ComputeStack` | ECS Fargate cluster, ALB with path routing, Fargate services + auto-scaling, runner task definitions |
+| `CodeCollab-FrontendStack` | S3 bucket for compiled SPA, CloudFront distribution with `/api/*` and `/ws/*` routed to the ALB |
+| `CodeCollab-ObservabilityStack` | CloudWatch dashboard for the four core signals |
+
+### CloudFront routing
+
+CloudFront is the only public origin. Behaviors:
+
+| Path             | Origin            | Notes                                 |
+| ---------------- | ----------------- | ------------------------------------- |
+| `/` (default)    | S3 frontend bucket | SPA fallback via 403 → /index.html   |
+| `/api/*`         | ALB               | Caching disabled, all methods allowed |
+| `/ws/*`          | ALB               | WebSocket upgrade support             |
 
 ### ECS services & auto-scaling
 
-All services run on Fargate in private subnets behind the ALB (`codecollab-alb-*.us-east-1.elb.amazonaws.com`).
+Services run on Fargate in private subnets behind the ALB.
 
-| Service | Port | ALB path(s) | Health check | Min tasks | Max tasks | CPU scale-out |
-|---|---|---|---|---|---|---|
-| collab-server | 8000 | `/ws/*`, `/api/sessions/*` | `GET /health → 200` | 2 | 6 | 60 % |
-| execution-api | 8001 | `/api/run/*` | `GET /health → 200` | 1 | 4 | 60 % |
-| frontend | 3000 | `/` (default) | `GET / → 200` | 1 | 2 | 70 % |
+| Service        | Port | ALB path(s)                 | Health check    | Min | Max | CPU scale-out |
+| -------------- | ---- | --------------------------- | --------------- | --- | --- | ------------- |
+| collab-server  | 8000 | `/ws/*`, `/api/sessions/*`  | `GET /healthz`  | 2   | 6   | 60 %          |
+| execution-api  | 8001 | `/api/run/*`                | `GET /healthz`  | 1   | 4   | 60 %          |
+| (translation)  | n/a  | `/api/translate*`           | n/a (Lambda)    | n/a | n/a | n/a           |
 
-Scale-out cooldown: 60 s (frontend: 120 s). Scale-in cooldown: 300 s for all services.
+Scale-out cooldown: 60 s. Scale-in cooldown: 300 s.
+
+### Deploy from scratch
+
+```bash
+# 0. Bootstrap once per AWS account/region
+cd infra && npx cdk bootstrap aws://<account>/<region>
+
+# 1. Stand up data plane (creates ECR repos used by step 2)
+npx cdk deploy CodeCollab-NetworkStack CodeCollab-DataStack
+
+# 2. Build & push 4 Docker images for linux/amd64 (Fargate platform)
+cd ..
+aws ecr get-login-password --region <region> | docker login --username AWS \
+  --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+for image in python-runner nodejs-runner collab-server execution-api; do
+  case $image in
+    python-runner)  ctx=runners/python   ; df=runners/python/Dockerfile ;;
+    nodejs-runner)  ctx=runners/nodejs   ; df=runners/nodejs/Dockerfile ;;
+    collab-server)  ctx=.                ; df=collab-server/Dockerfile ;;
+    execution-api)  ctx=.                ; df=execution-api/Dockerfile ;;
+  esac
+  docker buildx build --platform linux/amd64 --push \
+    -t <account>.dkr.ecr.<region>.amazonaws.com/codecollab/$image:latest \
+    -f $df $ctx
+done
+
+# 3. Stand up compute, frontend, observability
+cd infra
+npx cdk deploy CodeCollab-ComputeStack \
+              CodeCollab-FrontendStack \
+              CodeCollab-ObservabilityStack
+
+# 4. Build the SPA pointed at the deployed CloudFront domain and sync to S3
+cd ../frontend
+cat > .env.production.local <<EOF
+REACT_APP_COLLAB_API_URL=https://<cloudfront-domain>
+REACT_APP_EXECUTION_API_URL=https://<cloudfront-domain>
+REACT_APP_COLLAB_WS_URL=wss://<cloudfront-domain>/ws
+REACT_APP_DEFAULT_LANGUAGE=python
+EOF
+CI=true npm run build
+aws s3 sync ./build s3://<frontend-bucket> --delete
+aws cloudfront create-invalidation --distribution-id <dist-id> --paths '/*'
+
+# 5. Set the Gemini API key (required for Translate)
+aws secretsmanager update-secret \
+  --secret-id codecollab/gemini-api-key --secret-string '<your-key>'
+```
+
+Stack outputs (after step 1 + 3) include the ECR repo URIs, the ALB DNS, the
+CloudFront distribution id and the public URL.
 
 ## Troubleshooting
 
