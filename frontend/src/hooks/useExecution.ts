@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   ApiError,
   executionWsBaseUrl,
-  postRun,
+  postRunAsync,
   type StreamEvent,
 } from "../lib/api";
 
@@ -72,8 +72,8 @@ export function useExecution() {
       lastRequestRef.current = { code, sessionId, language };
       setRunning(true);
       try {
-        const result = await postRun({ sessionId, code, language });
-        const wsUrl = `${executionWsBaseUrl()}/api/run/${encodeURIComponent(result.id)}/stream`;
+        const ack = await postRunAsync({ sessionId, code, language });
+        const wsUrl = `${executionWsBaseUrl()}/api/run/${encodeURIComponent(ack.runId)}/stream`;
 
         try {
           await new Promise<void>((resolve, reject) => {

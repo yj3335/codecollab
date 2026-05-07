@@ -154,4 +154,39 @@ describe("App Week3 UX", () => {
       expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument()
     );
   });
+
+  it("changing the language picker patches the session", async () => {
+    mockPatchSessionLanguage.mockResolvedValue({
+      sessionId: "s-123",
+      language: "javascript",
+    });
+    renderApp();
+    const select = (await screen.findByLabelText(
+      "Session language"
+    )) as HTMLSelectElement;
+    // Wait for sessionLoading to flip false so the change handler will fire PATCH.
+    await waitFor(() => expect(select).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "javascript" } });
+    });
+    await waitFor(() =>
+      expect(mockPatchSessionLanguage).toHaveBeenCalledWith("s-123", "javascript")
+    );
+  });
+
+  it("Run is invoked with the active session language", async () => {
+    mockGetSession.mockResolvedValue({
+      sessionId: "s-123",
+      language: "javascript",
+    });
+    renderApp();
+    const select = (await screen.findByLabelText(
+      "Session language"
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("javascript"));
+    fireEvent.click(screen.getByText("RunMock"));
+    await waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith("print('ok')", "s-123", "javascript")
+    );
+  });
 });

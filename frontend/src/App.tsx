@@ -14,6 +14,21 @@ import {
   type TranslationResult,
 } from "./lib/api";
 
+type SupportedLanguage = "python" | "javascript";
+
+const DEFAULT_LANGUAGE: SupportedLanguage =
+  ((process.env.REACT_APP_DEFAULT_LANGUAGE ?? "python").toLowerCase() === "javascript"
+    ? "javascript"
+    : "python") as SupportedLanguage;
+
+function isSupportedLanguage(value: string): value is SupportedLanguage {
+  return value === "python" || value === "javascript";
+}
+
+function otherLanguage(language: SupportedLanguage): SupportedLanguage {
+  return language === "python" ? "javascript" : "python";
+}
+
 function SessionNotFoundView({ onCreateSession }: { onCreateSession: () => void }) {
   return (
     <main className="workspace-grid">
@@ -41,9 +56,8 @@ function SessionWorkspace() {
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "connecting" | "disconnected" | "idle"
   >("idle");
-  const [sessionLanguage, setSessionLanguage] = useState(
-    process.env.REACT_APP_DEFAULT_LANGUAGE ?? "python"
-  );
+  const [sessionLanguage, setSessionLanguage] =
+    useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionMissing, setSessionMissing] = useState(false);
   const [workspaceBanner, setWorkspaceBanner] = useState<string | null>(null);
@@ -52,16 +66,19 @@ function SessionWorkspace() {
   const [translationBusy, setTranslationBusy] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [pendingTranslation, setPendingTranslation] = useState<TranslationResult | null>(null);
+  const [languageBusy, setLanguageBusy] = useState(false);
 
   const {
     activeSessionId,
     createError,
     clearCreateError,
     isCreatingSession,
-    onCreateSession,
+    onCreateSession: createSessionWithLanguage,
     onCopyShareUrl,
     shareUrl,
   } = useSession(sessionId);
+
+  const onCreateSession = () => createSessionWithLanguage(sessionLanguage);
 
   const { lines, running, error, run, clear, rerun } = useExecution();
 
@@ -92,13 +109,14 @@ function SessionWorkspace() {
       try {
         const s = await getSession(activeSessionId);
         if (!cancelled) {
-          setSessionLanguage(s.language);
+          if (isSupportedLanguage(s.language)) {
+            setSessionLanguage(s.language);
+          }
           setWorkspaceBanner(null);
           clearCreateError();
         }
       } catch (error) {
         if (!cancelled) {
-          setSessionLanguage(process.env.REACT_APP_DEFAULT_LANGUAGE ?? "python");
           if (error instanceof ApiError && error.kind === "not_found") {
             setSessionMissing(true);
           } else {
@@ -119,11 +137,34 @@ function SessionWorkspace() {
     };
   }, [activeSessionId]);
 
+  const handleLanguageChange = async (next: string) => {
+    if (!isSupportedLanguage(next) || next === sessionLanguage) return;
+    const previous = sessionLanguage;
+    setSessionLanguage(next);
+    if (sessionLoading || sessionMissing) {
+      return;
+    }
+    setLanguageBusy(true);
+    try {
+      await patchSessionLanguage(activeSessionId, next);
+    } catch (e) {
+      setSessionLanguage(previous);
+      const msg =
+        e instanceof ApiError
+          ? e.message
+          : "Could not change language. Please retry.";
+      setWorkspaceBanner(msg);
+      setBannerTone("error");
+    } finally {
+      setLanguageBusy(false);
+    }
+  };
+
   const handleTranslateRequest = async (code: string) => {
     setTranslationBusy(true);
     setTranslationError(null);
     try {
-      const targetLanguage = sessionLanguage === "python" ? "javascript" : "python";
+      const targetLanguage = otherLanguage(sessionLanguage);
       const result = await postTranslate({
         code,
         sourceLanguage: sessionLanguage,
@@ -152,9 +193,16 @@ function SessionWorkspace() {
     setTranslationBusy(true);
     setTranslationError(null);
     try {
-      await patchSessionLanguage(activeSessionId, pendingTranslation.targetLanguage);
+      const accepted = pendingTranslation.targetLanguage;
+      if (!isSupportedLanguage(accepted)) {
+        throw new ApiError(
+          `Unsupported language returned by translator: ${accepted}`,
+          "validation"
+        );
+      }
+      await patchSessionLanguage(activeSessionId, accepted);
       editorRef.current?.applyCode(pendingTranslation.translatedCode);
-      setSessionLanguage(pendingTranslation.targetLanguage);
+      setSessionLanguage(accepted);
       setDiffOpen(false);
       setPendingTranslation(null);
     } catch (e) {
@@ -189,6 +237,9 @@ function SessionWorkspace() {
         sessionId={activeSessionId}
         shareUrl={shareUrl}
         isCreatingSession={isCreatingSession}
+        language={sessionLanguage}
+        languageDisabled={languageBusy || running || translationBusy}
+        onLanguageChange={(next) => void handleLanguageChange(next)}
         statusLabel={connectionStatus}
         statusMessage={statusMessage}
         onCreateSession={onCreateSession}
@@ -204,50 +255,52 @@ function SessionWorkspace() {
         <SessionNotFoundView onCreateSession={onCreateSession} />
       ) : (
         <main className="workspace-grid">
-        <EditorPanel
-          ref={editorRef}
-          sessionId={activeSessionId}
-          language={sessionLanguage}
-          onConnectionStatusChange={setConnectionStatus}
-          onRunRequest={(code) => {
-            if (!code.trim()) {
-              setWorkspaceBanner("Editor is empty. Add code before running.");
-              setBannerTone("info");
-              return;
-            }
-            void run(code, activeSessionId, sessionLanguage);
-          }}
-          onTranslateRequest={(code) => {
-            if (!code.trim()) {
-              setWorkspaceBanner("Editor is empty. Add code before translating.");
-              setBannerTone("info");
-              return;
-            }
-            void handleTranslateRequest(code);
-          }}
-          runDisabled={running || translationBusy || sessionLoading}
-          translateDisabled={running || diffOpen || translationBusy || sessionLoading}
-        />
-        <section className="side-panels">
-          <OutputPanel
-            lines={lines}
-            running={running}
-            error={error}
-            onClear={clear}
-            onRetry={() => void rerun()}
+          <EditorPanel
+            ref={editorRef}
+            sessionId={activeSessionId}
+            language={sessionLanguage}
+            onConnectionStatusChange={setConnectionStatus}
+            onRunRequest={(code) => {
+              if (!code.trim()) {
+                setWorkspaceBanner("Editor is empty. Add code before running.");
+                setBannerTone("info");
+                return;
+              }
+              void run(code, activeSessionId, sessionLanguage);
+            }}
+            onTranslateRequest={(code) => {
+              if (!code.trim()) {
+                setWorkspaceBanner("Editor is empty. Add code before translating.");
+                setBannerTone("info");
+                return;
+              }
+              void handleTranslateRequest(code);
+            }}
+            runDisabled={running || translationBusy || sessionLoading}
+            translateDisabled={running || diffOpen || translationBusy || sessionLoading}
           />
-          <TranslationDiffView
-            open={diffOpen}
-            loading={translationBusy}
-            original={pendingTranslation?.originalCode ?? ""}
-            modified={pendingTranslation?.translatedCode ?? ""}
-            originalLanguage={pendingTranslation?.sourceLanguage ?? sessionLanguage}
-            modifiedLanguage={pendingTranslation?.targetLanguage ?? "javascript"}
-            explanation={translationError ?? pendingTranslation?.explanation}
-            onAccept={() => void handleAcceptTranslation()}
-            onDismiss={handleDismissTranslation}
-          />
-        </section>
+          <section className="side-panels">
+            <OutputPanel
+              lines={lines}
+              running={running}
+              error={error}
+              onClear={clear}
+              onRetry={() => void rerun()}
+            />
+            <TranslationDiffView
+              open={diffOpen}
+              loading={translationBusy}
+              original={pendingTranslation?.originalCode ?? ""}
+              modified={pendingTranslation?.translatedCode ?? ""}
+              originalLanguage={pendingTranslation?.sourceLanguage ?? sessionLanguage}
+              modifiedLanguage={
+                pendingTranslation?.targetLanguage ?? otherLanguage(sessionLanguage)
+              }
+              explanation={translationError ?? pendingTranslation?.explanation}
+              onAccept={() => void handleAcceptTranslation()}
+              onDismiss={handleDismissTranslation}
+            />
+          </section>
         </main>
       )}
     </div>
