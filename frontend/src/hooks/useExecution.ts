@@ -2,7 +2,9 @@ import { useCallback, useRef, useState } from "react";
 import {
   ApiError,
   executionWsBaseUrl,
+  getRun,
   postRunAsync,
+  type RunResult,
   type StreamEvent,
 } from "../lib/api";
 
@@ -11,6 +13,14 @@ export type OutputLine =
   | { kind: "err"; text: string }
   | { kind: "image"; src: string }
   | { kind: "meta"; text: string };
+
+const POLL_INTERVAL_MS = 3_000;
+const POLL_TIMEOUT_MS = 180_000;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRunResult = (value: Awaited<ReturnType<typeof getRun>>): value is RunResult =>
+  "exitCode" in value;
 
 function emitLine(
   line: string,
@@ -66,6 +76,19 @@ export function useExecution() {
     }
   }, [pushLines]);
 
+  const appendCompletion = useCallback(
+    (exitCode?: number, executionTime?: number) => {
+      pushLines((prev) => [
+        ...prev,
+        {
+          kind: "meta",
+          text: `\n[exit ${exitCode ?? "?"} in ${executionTime ?? "?"} ms]\n`,
+        },
+      ]);
+    },
+    [pushLines]
+  );
+
   const run = useCallback(
     async (code: string, sessionId: string, language: string) => {
       clear();
@@ -74,36 +97,79 @@ export function useExecution() {
       try {
         const ack = await postRunAsync({ sessionId, code, language });
         const wsUrl = `${executionWsBaseUrl()}/api/run/${encodeURIComponent(ack.runId)}/stream`;
+        let terminalReceived = false;
+        let streamedStdout = "";
+        let streamedStderr = "";
+
+        const applyFinalResult = (result: RunResult) => {
+          const remainingStdout = result.stdout.startsWith(streamedStdout)
+            ? result.stdout.slice(streamedStdout.length)
+            : result.stdout;
+          const remainingStderr = result.stderr.startsWith(streamedStderr)
+            ? result.stderr.slice(streamedStderr.length)
+            : result.stderr;
+
+          if (remainingStdout) {
+            feedStdout(remainingStdout);
+          }
+          if (remainingStderr) {
+            pushLines((prev) => [...prev, { kind: "err", text: remainingStderr }]);
+          }
+          appendCompletion(result.exitCode, result.executionTime);
+        };
+
+        const pollForFinalResult = async () => {
+          const deadline = Date.now() + POLL_TIMEOUT_MS;
+          pushLines((prev) => [
+            ...prev,
+            {
+              kind: "meta",
+              text: "\nRun stream disconnected; polling for final output...\n",
+            },
+          ]);
+
+          while (Date.now() < deadline) {
+            const status = await getRun(ack.runId);
+            if (isRunResult(status)) {
+              applyFinalResult(status);
+              return;
+            }
+            await wait(POLL_INTERVAL_MS);
+          }
+
+          throw new ApiError(
+            "Execution is still running after the stream disconnected. Try checking run status again.",
+            "timeout"
+          );
+        };
 
         try {
-          await new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve) => {
             const ws = new WebSocket(wsUrl);
             ws.onmessage = (ev) => {
               try {
                 const msg = JSON.parse(ev.data) as StreamEvent;
                 if (msg.type === "stdout") {
+                  streamedStdout += msg.data;
                   feedStdout(msg.data);
                 } else if (msg.type === "stderr") {
+                  streamedStderr += msg.data;
                   pushLines((prev) => [...prev, { kind: "err", text: msg.data }]);
                 } else if (msg.type === "start") {
                   pushLines((prev) => [...prev, { kind: "meta", text: `${msg.data}\n` }]);
                 } else if (msg.type === "complete") {
+                  terminalReceived = true;
                   try {
                     const parsed = JSON.parse(msg.data) as {
                       exitCode?: number;
                       executionTime?: number;
                     };
-                    pushLines((prev) => [
-                      ...prev,
-                      {
-                        kind: "meta",
-                        text: `\n[exit ${parsed.exitCode ?? "?"} in ${parsed.executionTime ?? "?"} ms]\n`,
-                      },
-                    ]);
+                    appendCompletion(parsed.exitCode, parsed.executionTime);
                   } catch {
                     pushLines((prev) => [...prev, { kind: "meta", text: `\n${msg.data}\n` }]);
                   }
                 } else if (msg.type === "error") {
+                  terminalReceived = true;
                   setError(`Run stream error: ${msg.data}`);
                   setErrorKind("server");
                 }
@@ -111,9 +177,13 @@ export function useExecution() {
                 /* ignore malformed frames */
               }
             };
-            ws.onerror = () => reject(new Error("WebSocket connection error"));
+            ws.onerror = () => resolve();
             ws.onclose = () => resolve();
           });
+
+          if (!terminalReceived) {
+            await pollForFinalResult();
+          }
         } finally {
           flushStdout();
         }
@@ -135,7 +205,7 @@ export function useExecution() {
         setRunning(false);
       }
     },
-    [clear, feedStdout, flushStdout, pushLines]
+    [appendCompletion, clear, feedStdout, flushStdout, pushLines]
   );
 
   const rerun = useCallback(async () => {

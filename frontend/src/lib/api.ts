@@ -210,6 +210,11 @@ export type RunAck = {
   statusUrl?: string;
 };
 
+export type RunStatus = {
+  runId: string;
+  status: "queued" | "running";
+};
+
 export async function postRunAsync(body: RunRequest): Promise<RunAck> {
   try {
     const response = await executionApi.post<ExecutionEnvelope<RunAck>>(
@@ -220,6 +225,22 @@ export async function postRunAsync(body: RunRequest): Promise<RunAck> {
     const env = response.data;
     if (response.status >= 400 || !env?.success || !env.data) {
       throw toApiError(env?.error ?? `Run failed (${response.status})`, response.status);
+    }
+    return env.data;
+  } catch (error) {
+    throw normalizeAxiosError(error);
+  }
+}
+
+export async function getRun(runId: string): Promise<RunResult | RunStatus> {
+  try {
+    const response = await executionApi.get<ExecutionEnvelope<RunResult | RunStatus>>(
+      `/api/run/${encodeURIComponent(runId)}`,
+      { validateStatus: () => true }
+    );
+    const env = response.data;
+    if (response.status >= 400 || !env?.success || !env.data) {
+      throw toApiError(env?.error ?? `Run status failed (${response.status})`, response.status);
     }
     return env.data;
   } catch (error) {

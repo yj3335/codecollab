@@ -31,6 +31,7 @@ interface UploadedPayload {
 interface ParsedLogState {
   stdout: string;
   stderr: string;
+  seenEventIds: Set<string>;
 }
 
 const wait = async (ms: number): Promise<void> =>
@@ -146,6 +147,9 @@ const parseLogMessage = (
   return [{ type: "stdout", data: `${message}\n`, timestamp }];
 };
 
+const logEventKey = (event: AWS.CloudWatchLogs.OutputLogEvent): string =>
+  `${event.timestamp ?? "unknown"}:${event.ingestionTime ?? "unknown"}:${event.message ?? ""}`;
+
 const drainLogsForGroup = async (
   sink: ExecutionEventSink,
   logGroupName: string,
@@ -165,6 +169,10 @@ const drainLogsForGroup = async (
 
     for (const event of response.events ?? []) {
       if (!event.message) continue;
+      const key = logEventKey(event);
+      if (state.seenEventIds.has(key)) continue;
+      state.seenEventIds.add(key);
+
       for (const parsedEvent of parseLogMessage(event.message, state)) {
         sink.emit(parsedEvent);
       }
@@ -178,6 +186,15 @@ const drainLogsForGroup = async (
     }
     throw error;
   }
+};
+
+const replayLogsFromStart = async (
+  sink: ExecutionEventSink,
+  logGroupName: string,
+  logStreamName: string,
+  state: ParsedLogState,
+): Promise<void> => {
+  await drainLogsForGroup(sink, logGroupName, logStreamName, state);
 };
 
 export const executeViaEcs = async (
@@ -263,8 +280,9 @@ export const executeViaEcs = async (
     }
 
     const logStreamName = `${runner.logStreamPrefix}/${runner.containerName}/${taskId}`;
-    const state: ParsedLogState = { stdout: "", stderr: "" };
+    const state: ParsedLogState = { stdout: "", stderr: "", seenEventIds: new Set() };
     let nextToken: string | undefined;
+    let lastHeartbeatAt = startedAt;
 
     while (true) {
       nextToken = await drainLogsForGroup(
@@ -288,15 +306,14 @@ export const executeViaEcs = async (
       }
 
       if (task.lastStatus === "STOPPED") {
-        for (let attempt = 0; attempt < 4; attempt += 1) {
-          nextToken = await drainLogsForGroup(
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await replayLogsFromStart(
             sink,
             runner.logGroup,
             logStreamName,
             state,
-            nextToken,
           );
-          await wait(250);
+          await wait(500);
         }
 
         const container = task.containers?.find(
@@ -331,6 +348,16 @@ export const executeViaEcs = async (
           executionTime,
           timestamp: new Date().toISOString(),
         };
+      }
+
+      const now = Date.now();
+      if (now - lastHeartbeatAt >= 10_000) {
+        lastHeartbeatAt = now;
+        sink.emit({
+          type: "start",
+          data: `Still waiting for ${language} runner (${task.lastStatus})...`,
+          timestamp: new Date().toISOString(),
+        });
       }
 
       await wait(config.cloudWatchPollIntervalMs);
